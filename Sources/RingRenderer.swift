@@ -159,7 +159,10 @@ enum RingRenderer {
         context.saveGState()
         context.setLineCap(.round)
         context.setLineWidth(lineWidth)
-        context.setStrokeColor(RingPalette.color(forRemaining: bucket.remainingPercent).cgColor)
+        let color = UsagePaceCalculator.calculate(bucket: bucket)
+            .map(PacePalette.color(for:))
+            ?? RingPalette.color(forRemaining: bucket.remainingPercent)
+        context.setStrokeColor(color.cgColor)
         context.addArc(
             center: center,
             radius: radius,

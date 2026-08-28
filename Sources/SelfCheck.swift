@@ -14,9 +14,10 @@ enum SelfCheck {
             ("cached event and additional dictionary decoding", checkCachedDecoding),
             ("reset timestamp seconds and milliseconds", checkResetTimestamps),
             ("generic usage pace calculation", checkUsagePaceCalculation),
+            ("pace color thresholds", checkPaceColorThresholds),
             ("invalid usage pace window is unavailable", checkInvalidUsagePaceWindow),
-            ("popover hides only Codex 5.3 Spark", checkPopoverLimitFilter),
-            ("popover semantic ring roles", checkSemanticRingRoles),
+            ("menu hides only Codex 5.3 Spark", checkMenuLimitFilter),
+            ("menu semantic ring roles", checkSemanticRingRoles),
             ("cached refresh retains prior live values", checkCachedRefreshRetainsLive),
             ("initial cached snapshot is accepted", checkInitialCachedSnapshot),
             ("successful live snapshot replaces prior values", checkLiveSnapshotReplacement),
@@ -32,10 +33,10 @@ enum SelfCheck {
             }
         }
         if failures.isEmpty {
-            print("Codex Usage Rings self-check passed (\(checks.count) checks)")
+            print("Codex Halo self-check passed (\(checks.count) checks)")
             return true
         }
-        fputs("Codex Usage Rings self-check failed (\(failures.count)/\(checks.count))\n", stderr)
+        fputs("Codex Halo self-check failed (\(failures.count)/\(checks.count))\n", stderr)
         return false
     }
 
@@ -165,13 +166,21 @@ enum SelfCheck {
             && UsagePaceCalculator.calculate(bucket: missingReset, at: now) == nil
     }
 
-    private static func checkPopoverLimitFilter() -> Bool {
+    private static func checkPaceColorThresholds() -> Bool {
+        PacePalette.band(for: UsagePace(usedPercent: 20, expectedUsedPercent: 30)) == .healthy
+            && PacePalette.band(for: UsagePace(usedPercent: 30.5, expectedUsedPercent: 30)) == .healthy
+            && PacePalette.band(for: UsagePace(usedPercent: 31, expectedUsedPercent: 30)) == .warning
+            && PacePalette.band(for: UsagePace(usedPercent: 35, expectedUsedPercent: 30)) == .warning
+            && PacePalette.band(for: UsagePace(usedPercent: 35.1, expectedUsedPercent: 30)) == .critical
+    }
+
+    private static func checkMenuLimitFilter() -> Bool {
         let bucket = LimitBucket(usedPercent: 20, windowMinutes: 300, resetAt: nil)
         let limits = [
             AdditionalLimit(name: "GPT-5.3-Codex-Spark", bucket: bucket),
             AdditionalLimit(name: "Review model", bucket: bucket),
         ]
-        return PopoverLimitFilter.visibleAdditionalLimits(limits) == [limits[1]]
+        return MenuLimitFilter.visibleAdditionalLimits(limits) == [limits[1]]
     }
 
     private static func checkSemanticRingRoles() -> Bool {

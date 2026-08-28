@@ -5,9 +5,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let client: UsageClient
     private let workerQueue = DispatchQueue(label: "local.codex.usage-rings.refresh", qos: .utility)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let popover = NSPopover()
-    private let popoverController = PopoverViewController()
+    private let menu = NSMenu()
+    private let menuItem = NSMenuItem()
+    private let menuController = MenuContentViewController()
     private var refreshTimer: Timer?
+    private var appearanceObservation: NSKeyValueObservation?
     private var presentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
     private var lastValidSnapshot: UsageSnapshot?
 
@@ -18,8 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        observeAppearance()
         configureStatusItem()
-        configurePopover()
+        configureMenu()
         refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -28,6 +31,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         refreshTimer?.invalidate()
+        appearanceObservation?.invalidate()
+    }
+
+    private func observeAppearance() {
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) {
+            [weak self] application, _ in
+            let isDark = application.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let resourceName = isDark ? "AppIcon-dark" : "AppIcon-light"
+            guard let url = Bundle.main.url(forResource: resourceName, withExtension: "png"),
+                  let image = NSImage(contentsOf: url) else {
+                return
+            }
+            application.applicationIconImage = image
+            self?.menuController.appearanceDidChange()
+        }
     }
 
     private func configureStatusItem() {
@@ -36,24 +54,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         button.image = RingRenderer.statusImage(baseLimits: BaseLimits())
         button.imagePosition = .imageOnly
-        button.target = self
-        button.action = #selector(togglePopover)
-        button.sendAction(on: [.leftMouseUp])
         button.toolTip = "Codex usage is loading…"
         statusItem.isVisible = true
     }
 
-    private func configurePopover() {
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentViewController = popoverController
-        popoverController.onRefresh = { [weak self] in
+    private func configureMenu() {
+        menu.autoenablesItems = false
+        menuItem.isEnabled = true
+        menuItem.view = menuController.view
+        menu.addItem(menuItem)
+        statusItem.menu = menu
+
+        menuController.onRefresh = { [weak self] in
             self?.refresh()
         }
-        popoverController.onQuit = {
+        menuController.onQuit = {
             NSApp.terminate(nil)
         }
-        popoverController.update(presentation)
+        menuController.update(presentation)
     }
 
     private func refresh() {
@@ -89,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let baseLimits = presentation.snapshot?.baseLimits ?? BaseLimits()
         statusItem.button?.image = RingRenderer.statusImage(baseLimits: baseLimits)
         statusItem.button?.toolTip = tooltipText()
-        popoverController.update(presentation)
+        menuController.update(presentation)
     }
 
     private func tooltipText() -> String {
@@ -100,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return presentation.issue?.title ?? "No Codex usage data"
         }
 
-        var lines = ["Codex Usage"]
+        var lines = ["Codex Halo"]
         if let fiveHour = snapshot.baseLimits.fiveHour {
             lines.append("5h: \(UsageFormatting.percent(fiveHour.remainingPercent)) remaining · \(UsageFormatting.resetTime(fiveHour.resetAt))")
         }
@@ -115,21 +133,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lines.append(issue.title)
         }
         return lines.joined(separator: "\n")
-    }
-
-    @objc private func togglePopover() {
-        guard let button = statusItem.button else {
-            return
-        }
-        if popover.isShown {
-            popover.performClose(nil)
-        } else {
-            if #available(macOS 14.0, *) {
-                NSApp.activate()
-            } else {
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        }
     }
 }

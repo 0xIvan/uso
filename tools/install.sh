@@ -2,9 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILT_APP="${ROOT_DIR}/tmp/CodexUsageRings.app"
+BUILT_APP="${ROOT_DIR}/tmp/Codex Halo.app"
 INSTALL_DIR="/Applications"
-INSTALLED_APP="${INSTALL_DIR}/CodexUsageRings.app"
+INSTALLED_APP="${INSTALL_DIR}/Codex Halo.app"
+LEGACY_APP="${INSTALL_DIR}/CodexUsageRings.app"
 LAUNCH_AGENT_DIR="${HOME}/Library/LaunchAgents"
 LAUNCH_AGENT_PATH="${LAUNCH_AGENT_DIR}/local.codex.usage-rings.plist"
 DOMAIN="gui/$(id -u)"
@@ -15,6 +16,7 @@ mkdir -p "${INSTALL_DIR}" "${LAUNCH_AGENT_DIR}"
 launchctl bootout "${DOMAIN}" "${LAUNCH_AGENT_PATH}" >/dev/null 2>&1 || true
 rm -rf "${INSTALLED_APP}"
 ditto "${BUILT_APP}" "${INSTALLED_APP}"
+rm -rf "${LEGACY_APP}"
 
 cat >"${LAUNCH_AGENT_PATH}" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -25,7 +27,7 @@ cat >"${LAUNCH_AGENT_PATH}" <<PLIST
   <string>local.codex.usage-rings</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${INSTALLED_APP}/Contents/MacOS/CodexUsageRings</string>
+    <string>${INSTALLED_APP}/Contents/MacOS/CodexHalo</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

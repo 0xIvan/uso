@@ -1,10 +1,12 @@
 import AppKit
 
-final class PopoverViewController: NSViewController {
+final class MenuContentViewController: NSViewController {
     var onRefresh: (() -> Void)?
     var onQuit: (() -> Void)?
 
     private var presentation = UsagePresentation.loading
+    private let contentWidth: CGFloat = 288
+    private let cardInset: CGFloat = 12
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 210))
@@ -19,13 +21,20 @@ final class PopoverViewController: NSViewController {
         rebuild()
     }
 
+    func appearanceDidChange() {
+        guard isViewLoaded else {
+            return
+        }
+        rebuild()
+    }
+
     private func rebuild() {
         view.subviews.forEach { $0.removeFromSuperview() }
 
         let content = NSStackView()
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 10
+        content.spacing = 12
         content.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(content)
 
@@ -54,11 +63,20 @@ final class PopoverViewController: NSViewController {
     }
 
     private func headerView() -> NSView {
-        let title = label("Codex Usage", size: 15, weight: .semibold, color: .labelColor)
+        let icon = NSImageView(image: NSApp.applicationIconImage)
+        icon.imageScaling = .scaleProportionallyDown
+        icon.setAccessibilityElement(false)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 32),
+            icon.heightAnchor.constraint(equalToConstant: 32),
+        ])
+
+        let title = label("Codex Halo", size: 15, weight: .semibold, color: .labelColor)
         let freshness: NSTextField
         if let snapshot = presentation.snapshot, snapshot.hasAnyData {
             freshness = label(
-                "\(snapshot.source.rawValue) · Last updated \(UsageFormatting.updated(snapshot.updatedAt))",
+                "Updated \(UsageFormatting.updated(snapshot.updatedAt))",
                 size: 11,
                 weight: .regular,
                 color: .secondaryLabelColor
@@ -69,41 +87,57 @@ final class PopoverViewController: NSViewController {
             freshness = label("No current snapshot", size: 11, weight: .regular, color: .secondaryLabelColor)
         }
 
-        let stack = NSStackView(views: [title, freshness])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 2
-        return stack
+        let text = NSStackView(views: [title, freshness])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 1
+
+        let status = statusBadge()
+        let row = NSStackView(views: [icon, text, flexibleSpacer(), status])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 9
+        row.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        return row
     }
 
     private func addSnapshot(_ snapshot: UsageSnapshot, to content: NSStackView) {
         if let issue = presentation.issue {
             content.addArrangedSubview(messageLabel(issue.title))
         }
+
+        var baseRows: [NSView] = []
         if let fiveHour = snapshot.baseLimits.fiveHour {
-            content.addArrangedSubview(limitRow(
+            baseRows.append(limitRow(
                 role: .fiveHour,
-                bucket: fiveHour
+                bucket: fiveHour,
+                width: contentWidth - (cardInset * 2)
             ))
         }
         if let weekly = snapshot.baseLimits.weekly {
-            content.addArrangedSubview(limitRow(
+            baseRows.append(limitRow(
                 role: .weekly,
-                bucket: weekly
+                bucket: weekly,
+                width: contentWidth - (cardInset * 2)
             ))
         }
+        if !baseRows.isEmpty {
+            content.addArrangedSubview(sectionLabel("USAGE LIMITS"))
+            content.addArrangedSubview(card(containing: baseRows))
+        }
 
-        let additionalLimits = PopoverLimitFilter.visibleAdditionalLimits(snapshot.additionalLimits)
+        let additionalLimits = MenuLimitFilter.visibleAdditionalLimits(snapshot.additionalLimits)
         guard !additionalLimits.isEmpty else {
             return
         }
         content.addArrangedSubview(sectionLabel("ADDITIONAL LIMITS"))
-        for limit in additionalLimits {
-            content.addArrangedSubview(additionalRow(limit))
+        let rows = additionalLimits.map {
+            additionalRow($0, width: contentWidth - (cardInset * 2))
         }
+        content.addArrangedSubview(card(containing: rows, spacing: 9))
     }
 
-    private func limitRow(role: BaseLimitRole, bucket: LimitBucket) -> NSView {
+    private func limitRow(role: BaseLimitRole, bucket: LimitBucket, width: CGFloat) -> NSView {
         let name: String
         let resetText: String
         switch role {
@@ -116,14 +150,15 @@ final class PopoverViewController: NSViewController {
         }
 
         let nameLabel = label(name, size: 13, weight: .semibold, color: .labelColor)
-        let resetLabel = label(resetText, size: 11, weight: .regular, color: .secondaryLabelColor)
+        let resetLabel = label(resetText, size: 11, weight: .regular, color: cardSecondaryColor)
         let textStack = NSStackView(views: [nameLabel, resetLabel])
         textStack.orientation = .vertical
         textStack.alignment = .leading
         textStack.spacing = 2
 
         let pace = UsagePaceCalculator.calculate(bucket: bucket)
-        let tintColor = RingPalette.color(forRemaining: bucket.remainingPercent)
+        let tintColor = pace.map(PacePalette.color(for:))
+            ?? RingPalette.color(forRemaining: bucket.remainingPercent)
         let percentLabel = label(
             "\(UsageFormatting.percent(bucket.remainingPercent)) remaining",
             size: 12,
@@ -137,7 +172,7 @@ final class PopoverViewController: NSViewController {
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 8
-        header.widthAnchor.constraint(equalToConstant: 288).isActive = true
+        header.widthAnchor.constraint(equalToConstant: width).isActive = true
 
         guard let pace else {
             return header
@@ -150,24 +185,24 @@ final class PopoverViewController: NSViewController {
             color: tintColor
         )
         let paceBar = UsagePaceBarView(pace: pace, tintColor: tintColor)
-        paceBar.widthAnchor.constraint(equalToConstant: 288).isActive = true
+        paceBar.widthAnchor.constraint(equalToConstant: width).isActive = true
 
         let used = label(
             "\(UsageFormatting.percent(pace.usedPercent)) used",
             size: 9,
             weight: .regular,
-            color: .tertiaryLabelColor
+            color: cardTertiaryColor
         )
         let expected = label(
             "On pace \(UsageFormatting.percent(pace.expectedUsedPercent))",
             size: 9,
             weight: .regular,
-            color: .tertiaryLabelColor
+            color: cardTertiaryColor
         )
         let legend = NSStackView(views: [used, flexibleSpacer(), expected])
         legend.orientation = .horizontal
         legend.alignment = .centerY
-        legend.widthAnchor.constraint(equalToConstant: 288).isActive = true
+        legend.widthAnchor.constraint(equalToConstant: width).isActive = true
 
         let row = NSStackView(views: [header, status, paceBar, legend])
         row.orientation = .vertical
@@ -177,7 +212,7 @@ final class PopoverViewController: NSViewController {
         return row
     }
 
-    private func additionalRow(_ limit: AdditionalLimit) -> NSView {
+    private func additionalRow(_ limit: AdditionalLimit, width: CGFloat) -> NSView {
         let indicator = NSView()
         indicator.wantsLayer = true
         indicator.layer?.backgroundColor = RingPalette.color(forRemaining: limit.bucket.remainingPercent).cgColor
@@ -190,7 +225,7 @@ final class PopoverViewController: NSViewController {
 
         let name = label(limit.name, size: 11, weight: .medium, color: .labelColor)
         name.lineBreakMode = .byTruncatingTail
-        let reset = label(UsageFormatting.adaptiveReset(limit.bucket), size: 10, weight: .regular, color: .tertiaryLabelColor)
+        let reset = label(UsageFormatting.adaptiveReset(limit.bucket), size: 10, weight: .regular, color: cardTertiaryColor)
         reset.setContentHuggingPriority(.required, for: .horizontal)
         let percent = label(
             "\(UsageFormatting.percent(limit.bucket.remainingPercent)) left",
@@ -204,7 +239,7 @@ final class PopoverViewController: NSViewController {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 7
-        row.widthAnchor.constraint(equalToConstant: 288).isActive = true
+        row.widthAnchor.constraint(equalToConstant: width).isActive = true
         return row
     }
 
@@ -237,8 +272,7 @@ final class PopoverViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 4
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
-        return stack
+        return card(containing: [stack])
     }
 
     private func controlsView() -> NSView {
@@ -246,29 +280,139 @@ final class PopoverViewController: NSViewController {
         refresh.bezelStyle = .rounded
         refresh.controlSize = .small
         refresh.isEnabled = !presentation.isRefreshing
+        refresh.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        refresh.imagePosition = .imageLeading
 
         let quit = NSButton(title: "Quit", target: self, action: #selector(quitPressed))
-        quit.bezelStyle = .rounded
+        quit.isBordered = false
         quit.controlSize = .small
+        quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
+        quit.imagePosition = .imageLeading
+        quit.contentTintColor = .secondaryLabelColor
 
         let row = NSStackView(views: [refresh, flexibleSpacer(), quit])
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.widthAnchor.constraint(equalToConstant: 288).isActive = true
+        row.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
         return row
     }
 
     private func separator() -> NSBox {
         let box = NSBox()
         box.boxType = .separator
-        box.widthAnchor.constraint(equalToConstant: 288).isActive = true
+        box.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
         return box
+    }
+
+    private func card(containing views: [NSView], spacing: CGFloat = 12) -> NSView {
+        var arrangedViews: [NSView] = []
+        for (index, view) in views.enumerated() {
+            if index > 0 {
+                arrangedViews.append(cardSeparator())
+            }
+            arrangedViews.append(view)
+        }
+
+        let stack = NSStackView(views: arrangedViews)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = spacing
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let box = NSBox()
+        box.boxType = .custom
+        box.fillColor = appearanceColor(
+            light: NSColor(calibratedWhite: 0, alpha: 0.035),
+            dark: NSColor(calibratedWhite: 1, alpha: 0.055)
+        )
+        box.borderColor = appearanceColor(
+            light: NSColor(calibratedWhite: 0, alpha: 0.09),
+            dark: NSColor(calibratedWhite: 1, alpha: 0.11)
+        )
+        box.borderWidth = 1
+        box.cornerRadius = 9
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            box.widthAnchor.constraint(equalToConstant: contentWidth),
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: cardInset),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -cardInset),
+            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 11),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -11),
+        ])
+        return box
+    }
+
+    private func cardSeparator() -> NSBox {
+        let box = NSBox()
+        box.boxType = .separator
+        box.widthAnchor.constraint(equalToConstant: contentWidth - (cardInset * 2)).isActive = true
+        return box
+    }
+
+    private func statusBadge() -> NSView {
+        let text: String
+        let color: NSColor
+        if presentation.isRefreshing {
+            text = "Refreshing"
+            color = .secondaryLabelColor
+        } else if let snapshot = presentation.snapshot, snapshot.hasAnyData {
+            text = snapshot.source.rawValue
+            color = snapshot.source == .live
+                ? RingPalette.color(forRemaining: 100)
+                : .systemOrange
+        } else {
+            text = "Unavailable"
+            color = .secondaryLabelColor
+        }
+
+        let dot = NSView()
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = color.cgColor
+        dot.layer?.cornerRadius = 2.5
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            dot.widthAnchor.constraint(equalToConstant: 5),
+            dot.heightAnchor.constraint(equalToConstant: 5),
+        ])
+
+        let textLabel = label(text, size: 9, weight: .semibold, color: color)
+        let row = NSStackView(views: [dot, textLabel])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 5
+        row.edgeInsets = NSEdgeInsets(top: 3, left: 7, bottom: 3, right: 7)
+        row.wantsLayer = true
+        row.layer?.backgroundColor = color.withAlphaComponent(0.11).cgColor
+        row.layer?.cornerRadius = 9
+        return row
     }
 
     private func sectionLabel(_ text: String) -> NSTextField {
         let field = label(text, size: 9, weight: .semibold, color: .tertiaryLabelColor)
         field.font = NSFont.systemFont(ofSize: 9, weight: .semibold)
         return field
+    }
+
+    private var cardSecondaryColor: NSColor {
+        appearanceColor(
+            light: NSColor(calibratedWhite: 0, alpha: 0.68),
+            dark: NSColor(calibratedWhite: 1, alpha: 0.72)
+        )
+    }
+
+    private var cardTertiaryColor: NSColor {
+        appearanceColor(
+            light: NSColor(calibratedWhite: 0, alpha: 0.52),
+            dark: NSColor(calibratedWhite: 1, alpha: 0.58)
+        )
+    }
+
+    private func appearanceColor(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        }
     }
 
     private func messageLabel(_ text: String) -> NSTextField {

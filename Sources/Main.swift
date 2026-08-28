@@ -2,10 +2,10 @@ import AppKit
 import Foundation
 
 @main
-enum CodexUsageRingsMain {
+enum CodexHaloMain {
     static func main() {
         guard let options = CommandLineOptions.parse() else {
-            fputs("CodexUsageRings: invalid arguments. Use --help.\n", stderr)
+            fputs("CodexHalo: invalid arguments. Use --help.\n", stderr)
             exit(2)
         }
 
@@ -30,7 +30,7 @@ enum CodexUsageRingsMain {
     private static func renderPreview(path: URL, codexHome: URL) -> Bool {
         let result = UsageClient(codexHome: codexHome).load()
         guard let snapshot = result.snapshot, snapshot.hasAnyData else {
-            fputs("CodexUsageRings: no current live or cached usage data for preview.\n", stderr)
+            fputs("CodexHalo: no current live or cached usage data for preview.\n", stderr)
             return false
         }
         do {
@@ -40,7 +40,7 @@ enum CodexUsageRingsMain {
             print("Source: \(snapshot.source.rawValue)")
             return true
         } catch {
-            fputs("CodexUsageRings: could not write preview PNG.\n", stderr)
+            fputs("CodexHalo: could not write preview PNG.\n", stderr)
             return false
         }
     }
@@ -52,7 +52,7 @@ private struct CommandLineOptions {
     var showsHelp = false
 
     static let help = """
-    Usage: CodexUsageRings [--self-check] [--preview PATH] [--codex-home PATH]
+    Usage: CodexHalo [--self-check] [--preview PATH] [--codex-home PATH]
 
       --self-check       Run deterministic mapping and decoding checks, then exit.
       --preview PATH     Render the current 22pt menu-bar rings to a 44x44 PNG, then exit.

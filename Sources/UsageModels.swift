@@ -70,7 +70,7 @@ enum UsagePaceCalculator {
     }
 }
 
-enum PopoverLimitFilter {
+enum MenuLimitFilter {
     static func visibleAdditionalLimits(_ limits: [AdditionalLimit]) -> [AdditionalLimit] {
         limits.filter { !isCodexSpark53($0.name) }
     }
@@ -296,5 +296,39 @@ enum RingPalette {
             return NSColor(calibratedRed: 0.92, green: 0.61, blue: 0.16, alpha: 0.96)
         }
         return NSColor(calibratedRed: 0.17, green: 0.62, blue: 0.28, alpha: 0.96)
+    }
+}
+
+enum UsagePaceBand: Equatable {
+    case healthy
+    case warning
+    case critical
+}
+
+enum PacePalette {
+    static func band(for pace: UsagePace) -> UsagePaceBand {
+        if pace.differencePercent > 5 {
+            return .critical
+        }
+        if pace.differencePercent > 0.5 {
+            return .warning
+        }
+        return .healthy
+    }
+
+    static func color(for pace: UsagePace) -> NSColor {
+        switch band(for: pace) {
+        case .healthy:
+            return NSColor(name: nil) { appearance in
+                if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+                    return RingPalette.color(forRemaining: 100)
+                }
+                return NSColor(calibratedRed: 0.08, green: 0.49, blue: 0.20, alpha: 0.98)
+            }
+        case .warning:
+            return RingPalette.color(forRemaining: 50)
+        case .critical:
+            return RingPalette.color(forRemaining: 20)
+        }
     }
 }
