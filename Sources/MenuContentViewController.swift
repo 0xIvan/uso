@@ -50,29 +50,39 @@ final class MenuContentViewController: NSViewController {
 
         content.addArrangedSubview(headerView())
 
-        if let header = content.arrangedSubviews.last { content.setCustomSpacing(18, after: header) }
-        let codexHeading = providerHeading("Codex")
-        content.addArrangedSubview(codexHeading)
-        content.setCustomSpacing(8, after: codexHeading)
-        if let snapshot = presentation.snapshot, snapshot.hasAnyData {
-            addSnapshot(snapshot, to: content)
-        } else {
-            content.addArrangedSubview(emptyStateView())
+        if presentation.hasSignIn {
+            if let header = content.arrangedSubviews.last { content.setCustomSpacing(18, after: header) }
+            let codexHeading = providerHeading("Codex")
+            content.addArrangedSubview(codexHeading)
+            content.setCustomSpacing(8, after: codexHeading)
+            if let snapshot = presentation.snapshot, snapshot.hasAnyData {
+                addSnapshot(snapshot, to: content)
+            } else {
+                content.addArrangedSubview(emptyStateView())
+            }
         }
 
-        if let previousSection = content.arrangedSubviews.last { content.setCustomSpacing(20, after: previousSection) }
-        let claudeHeading = providerHeading("Claude")
-        content.addArrangedSubview(claudeHeading)
-        content.setCustomSpacing(8, after: claudeHeading)
-        if let snapshot = claudePresentation.snapshot, snapshot.hasAnyData {
-            if let issue = claudePresentation.issue { content.addArrangedSubview(messageLabel(issue.title)) }
-            var rows: [NSView] = []
-            if let bucket = snapshot.baseLimits.fiveHour { rows.append(limitRow(role: .fiveHour, bucket: bucket, width: contentWidth - cardInset * 2)) }
-            if let bucket = snapshot.baseLimits.weekly { rows.append(limitRow(role: .weekly, bucket: bucket, width: contentWidth - cardInset * 2)) }
-            if !rows.isEmpty { content.addArrangedSubview(card(containing: rows)) }
-            content.addArrangedSubview(messageLabel("\(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))"))
-        } else {
-            content.addArrangedSubview(messageLabel(claudePresentation.isRefreshing ? "Checking Claude usage…" : (claudePresentation.issue == .notSignedIn ? "Sign in with Claude Code to see subscription usage." : claudePresentation.issue?.title ?? "No Claude usage data")))
+        if claudePresentation.hasSignIn {
+            if let previousSection = content.arrangedSubviews.last { content.setCustomSpacing(20, after: previousSection) }
+            let claudeHeading = providerHeading("Claude")
+            content.addArrangedSubview(claudeHeading)
+            content.setCustomSpacing(8, after: claudeHeading)
+            if let snapshot = claudePresentation.snapshot, snapshot.hasAnyData {
+                if let issue = claudePresentation.issue { content.addArrangedSubview(messageLabel(issue.title)) }
+                var rows: [NSView] = []
+                if let bucket = snapshot.baseLimits.fiveHour { rows.append(limitRow(role: .fiveHour, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
+                if let bucket = snapshot.baseLimits.weekly { rows.append(limitRow(role: .weekly, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
+                if !rows.isEmpty { content.addArrangedSubview(card(containing: rows)) }
+                content.addArrangedSubview(messageLabel("\(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))"))
+            } else {
+                content.addArrangedSubview(messageLabel(claudePresentation.isRefreshing ? "Checking Claude usage…" : claudePresentation.issue?.title ?? "No Claude usage data"))
+            }
+        }
+
+        if !presentation.hasSignIn && !claudePresentation.hasSignIn {
+            content.addArrangedSubview(messageLabel(presentation.isRefreshing || claudePresentation.isRefreshing
+                ? "Checking signed-in providers…"
+                : "Sign in with Codex or Claude Code, then refresh to see usage."))
         }
 
         content.addArrangedSubview(separator())
@@ -84,7 +94,14 @@ final class MenuContentViewController: NSViewController {
         view.frame.size = preferredContentSize
     }
 
+    private var headerPresentation: UsagePresentation {
+        if presentation.hasSignIn { return presentation }
+        if claudePresentation.hasSignIn { return claudePresentation }
+        return presentation
+    }
+
     private func headerView() -> NSView {
+        let presentation = headerPresentation
         let icon = NSImageView(image: NSApp.applicationIconImage)
         icon.imageScaling = .scaleProportionallyDown
         icon.setAccessibilityElement(false)
@@ -106,7 +123,7 @@ final class MenuContentViewController: NSViewController {
         } else if presentation.isRefreshing {
             freshness = label("Refreshing…", size: 11, weight: .regular, color: .secondaryLabelColor)
         } else {
-            freshness = label("No current snapshot", size: 11, weight: .regular, color: .secondaryLabelColor)
+            freshness = label(presentation.hasSignIn ? "No current snapshot" : "No providers signed in", size: 11, weight: .regular, color: .secondaryLabelColor)
         }
 
         let text = NSStackView(views: [title, freshness])
@@ -161,13 +178,13 @@ final class MenuContentViewController: NSViewController {
         content.addArrangedSubview(card(containing: rows, spacing: 9))
     }
 
-    private func limitRow(role: BaseLimitRole, bucket: LimitBucket, width: CGFloat) -> NSView {
+    private func limitRow(role: BaseLimitRole, bucket: LimitBucket, provider: UsageRing = .codex, width: CGFloat) -> NSView {
         let name: String
         let resetText: String
         switch role {
         case .fiveHour:
             name = "5h"
-            resetText = UsageFormatting.resetTime(bucket.resetAt)
+            resetText = provider.hasUnstartedWindow(bucket) ? "Window not started" : UsageFormatting.resetTime(bucket.resetAt)
         case .weekly:
             name = "1w"
             resetText = UsageFormatting.resetDateText(bucket.resetAt)
@@ -404,6 +421,7 @@ final class MenuContentViewController: NSViewController {
     }
 
     private func statusBadge() -> NSView {
+        let presentation = headerPresentation
         let text: String
         let color: NSColor
         if presentation.isRefreshing {
@@ -415,7 +433,7 @@ final class MenuContentViewController: NSViewController {
                 ? RingPalette.color(forRemaining: 100)
                 : .systemOrange
         } else {
-            text = "Unavailable"
+            text = presentation.hasSignIn ? "Unavailable" : "No sign-in"
             color = .secondaryLabelColor
         }
 

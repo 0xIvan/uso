@@ -4,6 +4,8 @@ import AppKit
 enum SelfCheck {
     static func run() -> Bool {
         let checks: [(String, () -> Bool)] = [
+            ("signed-out providers are hidden while unavailable sign-ins remain visible", checkProviderVisibility),
+            ("Claude idle five-hour windows show their normal not-started state", checkClaudeIdleWindow),
             ("Claude token renewal preserves credentials and classifies failures", checkClaudeRenewal),
             ("nested rings put weekly outside and five-hour inside", checkNestedRings),
             ("Claude windows, ISO timestamps, null and malformed data", checkClaudeDecoding),
@@ -48,6 +50,46 @@ enum SelfCheck {
         }
         fputs("Uso self-check failed (\(failures.count)/\(checks.count))\n", stderr)
         return false
+    }
+
+    private static func checkProviderVisibility() -> Bool {
+        let name = "uso-visibility-check-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: name) else { return false }
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = RingSettings(defaults: defaults)
+        let absent = UsagePresentation(snapshot: nil, issue: .notSignedIn, isRefreshing: false)
+        let unavailable = UsagePresentation(snapshot: nil, issue: .unavailable, isRefreshing: false)
+        let signedOutCache = UsagePresentation(snapshot: snapshot(source: .cached, usedPercent: 20), issue: .notSignedIn, isRefreshing: false)
+        guard settings.visible(codex: absent, claude: absent).isEmpty,
+              settings.visible(codex: .loading, claude: .loading).isEmpty,
+              settings.visible(codex: signedOutCache, claude: unavailable) == [.claude],
+              settings.visible(codex: unavailable, claude: absent) == [.codex] else { return false }
+        settings.set(.claude, enabled: false)
+        return settings.visible(codex: absent, claude: unavailable).isEmpty
+            && !absent.hasSignIn && unavailable.hasSignIn
+    }
+
+    private static func checkClaudeIdleWindow() -> Bool {
+        _ = NSApplication.shared
+        let absent = UsagePresentation(snapshot: nil, issue: .notSignedIn, isRefreshing: false)
+        var idle = snapshot(source: .live, usedPercent: 0)
+        idle.baseLimits = BaseLimits(fiveHour: LimitBucket(usedPercent: 0, windowMinutes: 300, resetAt: nil))
+        let controller = MenuContentViewController()
+        _ = controller.view
+        func labels(in view: NSView) -> [String] {
+            (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap { labels(in: $0) }
+        }
+        controller.update(absent, claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false))
+        let idleLabels = labels(in: controller.view)
+        guard idleLabels.contains("Window not started"), !idleLabels.contains("Reset time unavailable"),
+              !idleLabels.contains("Codex"), idleLabels.contains("Claude"),
+              idleLabels.contains("Live"), !idleLabels.contains("Unavailable") else { return false }
+        idle.baseLimits.fiveHour?.usedPercent = 10
+        controller.update(absent, claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false))
+        guard labels(in: controller.view).contains("Reset time unavailable") else { return false }
+        controller.update(absent, claude: absent)
+        let absentLabels = labels(in: controller.view)
+        return !absentLabels.contains("Codex") && !absentLabels.contains("Claude")
     }
 
     private static func checkClaudeRenewal() -> Bool {

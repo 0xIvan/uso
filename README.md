@@ -6,6 +6,8 @@ A native macOS menu bar utility showing remaining Codex and Claude subscription 
 
 All rings use the same pace calculation: usage compared with the elapsed portion of its window. Green means on or under pace (with a 0.5-point tolerance), yellow warns up to 5 percentage points over pace, and red means more than 5 points over pace or exhausted. Gray means usage or pace is unavailable. With all rings disabled, a small “u” button keeps Settings accessible. Choices persist between launches.
 
+Providers without a local subscription sign-in are hidden from the menu bar and usage menu. Settings keeps your visibility preferences for when you sign in again. Temporary failures retain signed-in providers. If neither provider is signed in, a small Uso button keeps Settings and Refresh accessible. Claude five-hour usage at 0% without a reset timestamp is shown as “Window not started.”
+
 ## Install on another Mac
 
 Open the DMG, drag **Uso** to **Applications**, eject the image, and open the app. No developer tools are required on the receiving Mac. The app appears in the menu bar with no Dock icon. Open Settings from its menu to choose rings.

@@ -32,7 +32,7 @@ enum UsoMain {
         let claude = ClaudeUsageClient().load()
         let codexPresentation = UsagePresentation(snapshot: result.snapshot, issue: result.issue, isRefreshing: false)
         let claudePresentation = UsagePresentation(snapshot: claude.snapshot, issue: claude.issue, isRefreshing: false)
-        let rings = RingSettings().enabled
+        let rings = RingSettings().visible(codex: codexPresentation, claude: claudePresentation)
         let limits = rings.map { $0.limits(codex: codexPresentation, claude: claudePresentation) }
         do {
             let dimensions = try RingRenderer.writePreview(limits: limits, icons: rings.map(\.icon), to: path)

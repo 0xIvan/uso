@@ -14,6 +14,10 @@ enum UsageRing: String, CaseIterable {
     func limits(codex: UsagePresentation, claude: UsagePresentation) -> BaseLimits {
         (self == .codex ? codex : claude).snapshot?.baseLimits ?? BaseLimits()
     }
+
+    func hasUnstartedWindow(_ bucket: LimitBucket) -> Bool {
+        self == .claude && bucket.windowMinutes == 300 && bucket.usedPercent == 0 && bucket.resetAt == nil
+    }
 }
 
 final class RingSettings {
@@ -37,6 +41,10 @@ final class RingSettings {
         selection.removeAll { $0 == ring }
         if enabled { selection.append(ring) }
         defaults.set(selection.map(\.rawValue), forKey: key)
+    }
+
+    func visible(codex: UsagePresentation, claude: UsagePresentation) -> [UsageRing] {
+        enabled.filter { ($0 == .codex ? codex : claude).hasSignIn }
     }
 }
 

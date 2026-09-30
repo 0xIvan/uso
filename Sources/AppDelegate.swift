@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else {
             return
         }
-        button.image = RingRenderer.statusImage(limits: settings.enabled.map { _ in BaseLimits() }, icons: settings.enabled.map(\.icon))
+        button.image = RingRenderer.statusImage(limits: [])
         button.imagePosition = .imageOnly
         button.toolTip = "Uso usage is loading…"
         statusItem.isVisible = true
@@ -135,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateInterface() {
         precondition(Thread.isMainThread)
-        let rings = settings.enabled
+        let rings = settings.visible(codex: presentation, claude: claudePresentation)
         let image = RingRenderer.statusImage(limits: rings.map { $0.limits(codex: presentation, claude: claudePresentation) }, icons: rings.map(\.icon))
         statusItem.length = image.size.width
         statusItem.button?.image = image
@@ -146,11 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func tooltipText() -> String {
         var lines = ["Uso"]
-        for ring in settings.enabled {
+        for ring in settings.visible(codex: presentation, claude: claudePresentation) {
             let limits = ring.limits(codex: presentation, claude: claudePresentation)
             for (name, bucket) in [("5h", limits.fiveHour), ("Weekly", limits.weekly)] {
                 if let bucket {
-                    let pace = UsagePaceCalculator.calculate(bucket: bucket).map(UsageFormatting.paceStatus) ?? "Pace unavailable"
+                    let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : (UsagePaceCalculator.calculate(bucket: bucket).map(UsageFormatting.paceStatus) ?? "Pace unavailable")
                     lines.append("\(ring.title) \(name): \(UsageFormatting.percent(bucket.remainingPercent)) remaining · \(pace)")
                 } else {
                     lines.append("\(ring.title) \(name): unavailable")
@@ -159,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         for (name, value) in [("Codex", presentation), ("Claude", claudePresentation)] {
+            guard value.hasSignIn else { continue }
             if let issue = value.issue { lines.append("\(name): \(issue.title)") }
             if let snapshot = value.snapshot { lines.append("\(name): \(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))") }
         }

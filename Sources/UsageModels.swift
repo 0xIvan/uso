@@ -147,6 +147,11 @@ struct UsagePresentation {
     var isRefreshing: Bool
 
     static let loading = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: true)
+
+    var hasSignIn: Bool {
+        // A retained cache must not keep a signed-out provider visible.
+        issue != .notSignedIn && (snapshot != nil || issue != nil)
+    }
 }
 
 struct UsageSnapshotResolution {
