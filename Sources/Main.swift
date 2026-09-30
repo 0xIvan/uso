@@ -2,10 +2,10 @@ import AppKit
 import Foundation
 
 @main
-enum CodexHaloMain {
+enum UsoMain {
     static func main() {
         guard let options = CommandLineOptions.parse() else {
-            fputs("CodexHalo: invalid arguments. Use --help.\n", stderr)
+            fputs("Uso: invalid arguments. Use --help.\n", stderr)
             exit(2)
         }
 
@@ -22,25 +22,27 @@ enum CodexHaloMain {
 
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
-        let delegate = AppDelegate(codexHome: options.codexHome)
+        let delegate = AppDelegate(codexHome: options.codexHome, showsSettings: options.showsSettings)
         application.delegate = delegate
         application.run()
     }
 
     private static func renderPreview(path: URL, codexHome: URL) -> Bool {
         let result = UsageClient(codexHome: codexHome).load()
-        guard let snapshot = result.snapshot, snapshot.hasAnyData else {
-            fputs("CodexHalo: no current live or cached usage data for preview.\n", stderr)
-            return false
-        }
+        let claude = ClaudeUsageClient().load()
+        let codexPresentation = UsagePresentation(snapshot: result.snapshot, issue: result.issue, isRefreshing: false)
+        let claudePresentation = UsagePresentation(snapshot: claude.snapshot, issue: claude.issue, isRefreshing: false)
+        let rings = RingSettings().enabled
+        let limits = rings.map { $0.limits(codex: codexPresentation, claude: claudePresentation) }
         do {
-            let dimensions = try RingRenderer.writePreview(baseLimits: snapshot.baseLimits, to: path)
+            let dimensions = try RingRenderer.writePreview(limits: limits, icons: rings.map(\.icon), to: path)
             print("Preview: \(path.path)")
-            print("Dimensions: \(Int(dimensions.width))x\(Int(dimensions.height)) px (22x22 pt @2x)")
-            print("Source: \(snapshot.source.rawValue)")
+            print("Dimensions: \(Int(dimensions.width))x\(Int(dimensions.height)) px (@2x)")
+            print("Codex: \(result.snapshot?.source.rawValue ?? result.issue?.title ?? "Unavailable")")
+            print("Claude: \(claude.snapshot?.source.rawValue ?? claude.issue?.title ?? "Unavailable")")
             return true
         } catch {
-            fputs("CodexHalo: could not write preview PNG.\n", stderr)
+            fputs("Uso: could not write preview PNG.\n", stderr)
             return false
         }
     }
@@ -50,12 +52,14 @@ private struct CommandLineOptions {
     var previewPath: URL?
     var runsSelfCheck = false
     var showsHelp = false
+    var showsSettings = false
 
     static let help = """
-    Usage: CodexHalo [--self-check] [--preview PATH] [--codex-home PATH]
+    Usage: Uso [--settings] [--self-check] [--preview PATH] [--codex-home PATH]
 
+      --settings         Open ring settings on launch.
       --self-check       Run deterministic mapping and decoding checks, then exit.
-      --preview PATH     Render the current 22pt menu-bar rings to a 44x44 PNG, then exit.
+      --preview PATH     Render enabled menu-bar rings to a PNG at 2x, then exit.
       --codex-home PATH  Override CODEX_HOME for CLI verification.
       --help             Show this help.
     """
@@ -71,6 +75,8 @@ private struct CommandLineOptions {
         while let argument = arguments.first {
             arguments.removeFirst()
             switch argument {
+            case "--settings":
+                options.showsSettings = true
             case "--self-check":
                 options.runsSelfCheck = true
             case "--preview":
@@ -92,7 +98,7 @@ private struct CommandLineOptions {
             }
         }
 
-        let modes = [options.runsSelfCheck, options.previewPath != nil, options.showsHelp].filter { $0 }.count
+        let modes = [options.runsSelfCheck, options.previewPath != nil, options.showsHelp, options.showsSettings].filter { $0 }.count
         return modes <= 1 ? options : nil
     }
 }

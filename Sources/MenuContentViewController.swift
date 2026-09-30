@@ -2,9 +2,11 @@ import AppKit
 
 final class MenuContentViewController: NSViewController {
     var onRefresh: (() -> Void)?
+    var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
 
     private var presentation = UsagePresentation.loading
+    private var claudePresentation = UsagePresentation.loading
     private let contentWidth: CGFloat = 288
     private let cardInset: CGFloat = 12
 
@@ -13,7 +15,8 @@ final class MenuContentViewController: NSViewController {
         rebuild()
     }
 
-    func update(_ presentation: UsagePresentation) {
+    func update(_ presentation: UsagePresentation, claude: UsagePresentation = .loading) {
+        self.claudePresentation = claude
         self.presentation = presentation
         guard isViewLoaded else {
             return
@@ -47,10 +50,29 @@ final class MenuContentViewController: NSViewController {
 
         content.addArrangedSubview(headerView())
 
+        if let header = content.arrangedSubviews.last { content.setCustomSpacing(18, after: header) }
+        let codexHeading = providerHeading("Codex")
+        content.addArrangedSubview(codexHeading)
+        content.setCustomSpacing(8, after: codexHeading)
         if let snapshot = presentation.snapshot, snapshot.hasAnyData {
             addSnapshot(snapshot, to: content)
         } else {
             content.addArrangedSubview(emptyStateView())
+        }
+
+        if let previousSection = content.arrangedSubviews.last { content.setCustomSpacing(20, after: previousSection) }
+        let claudeHeading = providerHeading("Claude")
+        content.addArrangedSubview(claudeHeading)
+        content.setCustomSpacing(8, after: claudeHeading)
+        if let snapshot = claudePresentation.snapshot, snapshot.hasAnyData {
+            if let issue = claudePresentation.issue { content.addArrangedSubview(messageLabel(issue.title)) }
+            var rows: [NSView] = []
+            if let bucket = snapshot.baseLimits.fiveHour { rows.append(limitRow(role: .fiveHour, bucket: bucket, width: contentWidth - cardInset * 2)) }
+            if let bucket = snapshot.baseLimits.weekly { rows.append(limitRow(role: .weekly, bucket: bucket, width: contentWidth - cardInset * 2)) }
+            if !rows.isEmpty { content.addArrangedSubview(card(containing: rows)) }
+            content.addArrangedSubview(messageLabel("\(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))"))
+        } else {
+            content.addArrangedSubview(messageLabel(claudePresentation.isRefreshing ? "Checking Claude usage…" : (claudePresentation.issue == .notSignedIn ? "Sign in with Claude Code to see subscription usage." : claudePresentation.issue?.title ?? "No Claude usage data")))
         }
 
         content.addArrangedSubview(separator())
@@ -58,7 +80,7 @@ final class MenuContentViewController: NSViewController {
 
         view.layoutSubtreeIfNeeded()
         let height = ceil(content.fittingSize.height) + 26
-        preferredContentSize = NSSize(width: 320, height: min(max(height, 190), 520))
+        preferredContentSize = NSSize(width: 320, height: max(height, 190))
         view.frame.size = preferredContentSize
     }
 
@@ -72,7 +94,7 @@ final class MenuContentViewController: NSViewController {
             icon.heightAnchor.constraint(equalToConstant: 32),
         ])
 
-        let title = label("Codex Halo", size: 15, weight: .semibold, color: .labelColor)
+        let title = label("Uso", size: 15, weight: .semibold, color: .labelColor)
         let freshness: NSTextField
         if let snapshot = presentation.snapshot, snapshot.hasAnyData {
             freshness = label(
@@ -121,8 +143,10 @@ final class MenuContentViewController: NSViewController {
                 width: contentWidth - (cardInset * 2)
             ))
         }
+        if let count = snapshot.availableResetCount {
+            baseRows.append(resetCountRow(count, resets: snapshot.availableResets))
+        }
         if !baseRows.isEmpty {
-            content.addArrangedSubview(sectionLabel("USAGE LIMITS"))
             content.addArrangedSubview(card(containing: baseRows))
         }
 
@@ -130,7 +154,7 @@ final class MenuContentViewController: NSViewController {
         guard !additionalLimits.isEmpty else {
             return
         }
-        content.addArrangedSubview(sectionLabel("ADDITIONAL LIMITS"))
+        content.addArrangedSubview(sectionLabel("Additional limits"))
         let rows = additionalLimits.map {
             additionalRow($0, width: contentWidth - (cardInset * 2))
         }
@@ -157,8 +181,7 @@ final class MenuContentViewController: NSViewController {
         textStack.spacing = 2
 
         let pace = UsagePaceCalculator.calculate(bucket: bucket)
-        let tintColor = pace.map(PacePalette.color(for:))
-            ?? RingPalette.color(forRemaining: bucket.remainingPercent)
+        let tintColor = PacePalette.color(for: bucket)
         let percentLabel = label(
             "\(UsageFormatting.percent(bucket.remainingPercent)) remaining",
             size: 12,
@@ -212,10 +235,36 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
+    private func resetCountRow(_ count: Int, resets: [AvailableReset]?) -> NSView {
+        let title = label("Available resets", size: 12, weight: .medium, color: .labelColor)
+        let value = label(String(count), size: 12, weight: .semibold, color: .labelColor)
+        value.setContentHuggingPriority(.required, for: .horizontal)
+        let row = NSStackView(views: [title, flexibleSpacer(), value])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        row.widthAnchor.constraint(equalToConstant: contentWidth - (cardInset * 2)).isActive = true
+        guard count > 0 else {
+            return row
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        let expiryTexts = resets?.map { reset in
+            reset.expiresAt.map { "Expires \(formatter.string(from: $0))" } ?? "Expiry unavailable"
+        } ?? ["Expiry unavailable"]
+        let details = expiryTexts.map { label($0, size: 11, weight: .regular, color: cardSecondaryColor) }
+        let stack = NSStackView(views: [row] + details)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        return stack
+    }
+
     private func additionalRow(_ limit: AdditionalLimit, width: CGFloat) -> NSView {
         let indicator = NSView()
         indicator.wantsLayer = true
-        indicator.layer?.backgroundColor = RingPalette.color(forRemaining: limit.bucket.remainingPercent).cgColor
+        indicator.layer?.backgroundColor = PacePalette.color(for: limit.bucket).cgColor
         indicator.layer?.cornerRadius = 3
         indicator.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -231,7 +280,7 @@ final class MenuContentViewController: NSViewController {
             "\(UsageFormatting.percent(limit.bucket.remainingPercent)) left",
             size: 11,
             weight: .semibold,
-            color: RingPalette.color(forRemaining: limit.bucket.remainingPercent)
+            color: PacePalette.color(for: limit.bucket)
         )
         percent.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -257,7 +306,7 @@ final class MenuContentViewController: NSViewController {
             case .noData:
                 titleText = "No usage data"
                 detailText = "Codex did not report any recognized limits."
-            case .unavailable, .offlineCached:
+            case .unavailable, .offlineCached, .signInExpired, .rateLimited, .credentialUpdateFailed:
                 titleText = "Usage unavailable"
                 detailText = "The live endpoint and local cache could not provide data."
             case nil:
@@ -290,7 +339,10 @@ final class MenuContentViewController: NSViewController {
         quit.imagePosition = .imageLeading
         quit.contentTintColor = .secondaryLabelColor
 
-        let row = NSStackView(views: [refresh, flexibleSpacer(), quit])
+        let settings = NSButton(title: "Settings…", target: self, action: #selector(settingsPressed))
+        settings.bezelStyle = .rounded
+        settings.controlSize = .small
+        let row = NSStackView(views: [refresh, settings, flexibleSpacer(), quit])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
@@ -389,10 +441,12 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
+    private func providerHeading(_ text: String) -> NSTextField {
+        label(text, size: 14, weight: .semibold, color: .labelColor)
+    }
+
     private func sectionLabel(_ text: String) -> NSTextField {
-        let field = label(text, size: 9, weight: .semibold, color: .tertiaryLabelColor)
-        field.font = NSFont.systemFont(ofSize: 9, weight: .semibold)
-        return field
+        label(text, size: 10, weight: .medium, color: .secondaryLabelColor)
     }
 
     private var cardSecondaryColor: NSColor {
@@ -437,6 +491,8 @@ final class MenuContentViewController: NSViewController {
     @objc private func refreshPressed() {
         onRefresh?()
     }
+
+    @objc private func settingsPressed() { onSettings?() }
 
     @objc private func quitPressed() {
         onQuit?()

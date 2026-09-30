@@ -1,8 +1,16 @@
 import Foundation
+import AppKit
 
 enum SelfCheck {
     static func run() -> Bool {
         let checks: [(String, () -> Bool)] = [
+            ("Claude token renewal preserves credentials and classifies failures", checkClaudeRenewal),
+            ("nested rings put weekly outside and five-hour inside", checkNestedRings),
+            ("Claude windows, ISO timestamps, null and malformed data", checkClaudeDecoding),
+            ("ring selection persists and allows all rings off", checkRingSelection),
+            ("side-by-side ring dimensions and unavailable fallback", checkRingLayout),
+            ("usage and reset requests select the signed-in account", checkAccountSelection),
+            ("legacy credentials and invalid sign-ins", checkLegacyCredentials),
             ("weekly in primary only", checkWeeklyPrimaryOnly),
             ("five-hour in secondary only", checkFiveHourSecondaryOnly),
             ("swapped dual buckets", checkSwappedBuckets),
@@ -11,6 +19,8 @@ enum SelfCheck {
             ("remaining percentage clamping", checkRemainingClamping),
             ("exhausted limit detection", checkExhaustedLimitDetection),
             ("live decoding variants and additional list", checkLiveDecoding),
+            ("available resets distinguish banked, zero, and unknown", checkAvailableResets),
+            ("reset expiry dates exclude history and sort soonest first", checkResetExpiries),
             ("cached event and additional dictionary decoding", checkCachedDecoding),
             ("reset timestamp seconds and milliseconds", checkResetTimestamps),
             ("generic usage pace calculation", checkUsagePaceCalculation),
@@ -33,11 +43,116 @@ enum SelfCheck {
             }
         }
         if failures.isEmpty {
-            print("Codex Halo self-check passed (\(checks.count) checks)")
+            print("Uso self-check passed (\(checks.count) checks)")
             return true
         }
-        fputs("Codex Halo self-check failed (\(failures.count)/\(checks.count))\n", stderr)
+        fputs("Uso self-check failed (\(failures.count)/\(checks.count))\n", stderr)
         return false
+    }
+
+    private static func checkClaudeRenewal() -> Bool {
+        let original: [String: Any] = ["otherCredential": "preserved", "claudeAiOauth": ["accessToken": "old", "refreshToken": "original-refresh", "subscriptionType": "max"]]
+        let document = ClaudeUsageClient.renewedDocument(original, response: ["refresh_token": "rotated", "scope": "user:profile user:inference"], token: "new", expiresIn: 3600)
+        let oauth = document["claudeAiOauth"] as? [String: Any]
+        let fallback = ClaudeUsageClient.renewedDocument(original, response: [:], token: "new", expiresIn: 3600)["claudeAiOauth"] as? [String: Any]
+        return document["otherCredential"] as? String == "preserved"
+            && oauth?["refreshToken"] as? String == "rotated"
+            && oauth?["accessToken"] as? String == "new"
+            && oauth?["subscriptionType"] as? String == "max"
+            && (oauth?["expiresAt"] as? Double ?? 0) > Date().timeIntervalSince1970 * 1000
+            && fallback?["refreshToken"] as? String == "original-refresh"
+            && ClaudeUsageClient.issue(for: 401) == .signInExpired
+            && ClaudeUsageClient.issue(for: 429) == .rateLimited
+            && ClaudeUsageClient.issue(for: 500) == .unavailable
+    }
+
+    private static func checkNestedRings() -> Bool {
+        let now = Date().timeIntervalSince1970
+        let weekly = LimitBucket(usedPercent: 30, windowMinutes: 10_080, resetAt: now + 604_800 * 0.9)
+        let fiveHour = LimitBucket(usedPercent: 10, windowMinutes: 300, resetAt: now + 18_000 * 0.5)
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("uso-ring-check-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: path) }
+        guard (try? RingRenderer.writePreview(limits: [BaseLimits(fiveHour: fiveHour, weekly: weekly)], to: path)) != nil,
+              let data = try? Data(contentsOf: path), let bitmap = NSBitmapImageRep(data: data),
+              let outer = bitmap.colorAt(x: 22, y: 5)?.usingColorSpace(.deviceRGB),
+              let inner = bitmap.colorAt(x: 22, y: 13)?.usingColorSpace(.deviceRGB) else { return false }
+        return outer.redComponent > outer.greenComponent && inner.greenComponent > inner.redComponent
+    }
+
+    private static func checkClaudeDecoding() -> Bool {
+        let data = Data(#"{"five_hour":{"utilization":25,"resets_at":"2026-09-30T12:00:00.123Z"},"seven_day":{"utilization":60,"resets_at":"2026-10-05T12:00:00Z"},"seven_day_sonnet":{"utilization":12},"seven_day_opus":null}"#.utf8)
+        guard let snapshot = ClaudeUsageClient.decode(data) else { return false }
+        let invalid = ClaudeUsageClient.decode(Data(#"{"five_hour":{"utilization":-1},"seven_day":null}"#.utf8))
+        return snapshot.baseLimits.fiveHour?.usedPercent == 25
+            && snapshot.baseLimits.fiveHour?.windowMinutes == 300
+            && snapshot.baseLimits.fiveHour?.resetAt != nil
+            && snapshot.baseLimits.weekly?.windowMinutes == 10_080
+            && snapshot.baseLimits.weekly?.remainingPercent == 40
+            && snapshot.additionalLimits.count == 1
+            && invalid?.hasAnyData == false
+            && ClaudeUsageClient.decode(Data("[]".utf8)) == nil
+            && ClaudeUsageClient.token(from: Data(#"{"claudeAiOauth":{"accessToken":"fixture"}}"#.utf8)) == "fixture"
+            && ClaudeUsageClient.token(from: Data(#"{"apiKey":"fixture"}"#.utf8)) == nil
+    }
+
+    private static func checkRingSelection() -> Bool {
+        let name = "uso-self-check-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: name) else { return false }
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = RingSettings(defaults: defaults)
+        guard settings.enabled == UsageRing.allCases else { return false }
+        for ring in UsageRing.allCases { settings.set(ring, enabled: false) }
+        guard RingSettings(defaults: defaults).enabled.isEmpty else { return false }
+        defaults.removeObject(forKey: "enabledUsageProviders")
+        defaults.set(["codexWeekly", "claudeFiveHour"], forKey: "enabledUsageRings")
+        guard settings.enabled == UsageRing.allCases else { return false }
+        for ring in UsageRing.allCases { settings.set(ring, enabled: false) }
+        settings.set(.claude, enabled: true)
+        settings.set(.codex, enabled: true)
+        settings.set(.codex, enabled: true)
+        return RingSettings(defaults: defaults).enabled == [.codex, .claude]
+    }
+
+    private static func checkRingLayout() -> Bool {
+        RingRenderer.statusImage(limits: []).size.width == 22
+            && RingRenderer.statusImage(limits: [BaseLimits()]).size.width == 22
+            && RingRenderer.statusImage(limits: [BaseLimits(), BaseLimits()]).size.width == 46
+            && PacePalette.color(for: LimitBucket(usedPercent: 20, windowMinutes: nil, resetAt: nil)) == NSColor.secondaryLabelColor
+    }
+
+    private static func checkAccountSelection() -> Bool {
+        let fixture = Data(#"{"tokens":{"access_token":"test-token","account_id":"selected-account"}}"#.utf8)
+        guard let credentials = UsageDecoder.credentials(from: fixture),
+              credentials.accountID == "selected-account" else {
+            return false
+        }
+        return ["usage", "rate-limit-reset-credits"].allSatisfy { path in
+            let url = URL(string: "https://chatgpt.com/backend-api/wham/\(path)")!
+            let request = UsageClient.request(to: url, credentials: credentials)
+            return request.url == url
+                && request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token"
+                && request.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "selected-account"
+        }
+    }
+
+    private static func checkLegacyCredentials() -> Bool {
+        let fixtures = [
+            #"{"tokens":{"access_token":"test-token"}}"#,
+            #"{"tokens":{"access_token":"test-token","account_id":""}}"#,
+        ]
+        let url = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+        return fixtures.allSatisfy { fixture in
+            guard let credentials = UsageDecoder.credentials(from: Data(fixture.utf8)) else {
+                return false
+            }
+            let request = UsageClient.request(to: url, credentials: credentials)
+            return request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token"
+                && request.value(forHTTPHeaderField: "ChatGPT-Account-Id") == nil
+        }
+            && UsageDecoder.credentials(from: Data(#"{"tokens":{"access_token":""}}"#.utf8)) == nil
+            && UsageDecoder.credentials(from: Data(#"{"tokens":{"account_id":"selected-account"}}"#.utf8)) == nil
+            && UsageDecoder.credentials(from: Data(#"{}"#.utf8)) == nil
+            && UsageDecoder.credentials(from: Data("invalid json".utf8)) == nil
     }
 
     private static func checkWeeklyPrimaryOnly() -> Bool {
@@ -122,16 +237,53 @@ enum SelfCheck {
             return false
         }
         return snapshot.source == .cached
+            && snapshot.availableResetCount == nil
             && snapshot.baseLimits.fiveHour?.usedPercent == 18
             && snapshot.baseLimits.weekly?.usedPercent == 28
             && snapshot.additionalLimits.first?.name == "Review model"
             && snapshot.additionalLimits.first?.bucket.usedPercent == 38
     }
 
+    private static func checkAvailableResets() -> Bool {
+        let banked = #"{"rate_limit_reset_credits":{"available_count":2,"applicable_available_count":0}}"#.data(using: .utf8)!
+        let zero = #"{"rate_limit_reset_credits":{"available_count":0}}"#.data(using: .utf8)!
+        let missing = #"{}"#.data(using: .utf8)!
+        let negative = #"{"rate_limit_reset_credits":{"available_count":-1}}"#.data(using: .utf8)!
+        return UsageDecoder.liveSnapshot(from: banked)?.availableResetCount == 2
+            && UsageDecoder.liveSnapshot(from: banked)?.hasAnyData == true
+            && UsageDecoder.liveSnapshot(from: zero)?.availableResetCount == 0
+            && UsageDecoder.liveSnapshot(from: missing)?.availableResetCount == nil
+            && UsageDecoder.liveSnapshot(from: negative)?.availableResetCount == nil
+    }
+
     private static func checkResetTimestamps() -> Bool {
         let seconds = 2_000_000_000.0
         let milliseconds = seconds * 1_000
         return UsageFormatting.resetDate(seconds) == UsageFormatting.resetDate(milliseconds)
+    }
+
+    private static func checkResetExpiries() -> Bool {
+        let fixture = #"""
+        {"credits": [
+          {"reset_type":"codex_rate_limits","status":"available","expires_at":"2026-10-05T04:20:27Z"},
+          {"reset_type":"codex_rate_limits","status":"redeemed","expires_at":"2026-10-01T00:00:00Z"},
+          {"reset_type":"codex_rate_limits","status":"expired","expires_at":"2026-09-01T00:00:00Z"},
+          {"reset_type":"other","status":"available","expires_at":"2026-10-01T00:00:00Z"},
+          {"reset_type":"codex_rate_limits","status":"available","expires_at":"2026-10-04T02:35:12.257189Z"},
+          {"reset_type":"codex_rate_limits","status":"available","expires_at":null}
+        ]}
+        """#.data(using: .utf8)!
+        guard let resets = UsageDecoder.availableResets(from: fixture), resets.count == 3,
+              let first = resets[0].expiresAt,
+              let second = resets[1].expiresAt else {
+            return false
+        }
+        return first < second
+            && ISO8601DateFormatter().string(from: first) == "2026-10-04T02:35:12Z"
+            && ISO8601DateFormatter().string(from: second) == "2026-10-05T04:20:27Z"
+            && resets[2].expiresAt == nil
+            && UsageDecoder.availableResets(from: Data(#"{"credits":[]}"#.utf8)) == []
+            && UsageDecoder.availableResets(from: Data(#"{}"#.utf8)) == nil
     }
 
     private static func checkUsagePaceCalculation() -> Bool {
@@ -184,17 +336,20 @@ enum SelfCheck {
     }
 
     private static func checkSemanticRingRoles() -> Bool {
-        let bucket = LimitBucket(usedPercent: 25, windowMinutes: 300, resetAt: nil)
-        let fiveHour = BaseLimitRole.fiveHour.limits(containing: bucket)
-        let weekly = BaseLimitRole.weekly.limits(containing: bucket)
-        return fiveHour.fiveHour == bucket
-            && fiveHour.weekly == nil
-            && weekly.fiveHour == nil
-            && weekly.weekly == bucket
+        var codex = snapshot(source: .live, usedPercent: 25)
+        codex.baseLimits.fiveHour = LimitBucket(usedPercent: 10, windowMinutes: 300, resetAt: nil)
+        var claude = snapshot(source: .live, usedPercent: 55)
+        claude.baseLimits.fiveHour = LimitBucket(usedPercent: 40, windowMinutes: 300, resetAt: nil)
+        let first = UsagePresentation(snapshot: codex, issue: nil, isRefreshing: false)
+        let second = UsagePresentation(snapshot: claude, issue: nil, isRefreshing: false)
+        return UsageRing.codex.limits(codex: first, claude: second) == codex.baseLimits
+            && UsageRing.claude.limits(codex: first, claude: second) == claude.baseLimits
     }
 
     private static func checkCachedRefreshRetainsLive() -> Bool {
-        let live = snapshot(source: .live, usedPercent: 20)
+        var live = snapshot(source: .live, usedPercent: 20)
+        live.availableResetCount = 2
+        live.availableResets = [AvailableReset(expiresAt: Date(timeIntervalSince1970: 2_000_000_000))]
         let diskCached = snapshot(source: .cached, usedPercent: 80)
         let resolution = UsageSnapshotPolicy.resolve(
             result: UsageLoadResult(snapshot: diskCached, issue: nil),
@@ -205,6 +360,8 @@ enum SelfCheck {
             lastValidSnapshot: live
         )
         return resolution.presentation.snapshot?.baseLimits.weekly?.usedPercent == 20
+            && resolution.presentation.snapshot?.availableResetCount == 2
+            && resolution.presentation.snapshot?.availableResets == live.availableResets
             && resolution.presentation.snapshot?.source == .cached
             && resolution.presentation.snapshot?.updatedAt == live.updatedAt
             && resolution.presentation.issue == .offlineCached
@@ -225,8 +382,10 @@ enum SelfCheck {
     }
 
     private static func checkLiveSnapshotReplacement() -> Bool {
-        let previous = snapshot(source: .live, usedPercent: 45)
-        let current = snapshot(source: .live, usedPercent: 15)
+        var previous = snapshot(source: .live, usedPercent: 45)
+        previous.availableResetCount = 2
+        var current = snapshot(source: .live, usedPercent: 15)
+        current.availableResetCount = 0
         let resolution = UsageSnapshotPolicy.resolve(
             result: UsageLoadResult(snapshot: current, issue: nil),
             lastValidSnapshot: previous

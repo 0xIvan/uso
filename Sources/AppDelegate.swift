@@ -2,9 +2,16 @@ import AppKit
 import Foundation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let showsSettings: Bool
     private let client: UsageClient
+    private let claudeClient = ClaudeUsageClient()
+    private let settings = RingSettings()
+    private lazy var settingsController = SettingsWindowController(settings: settings)
+    private var claudePresentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
+    private var lastClaudeSnapshot: UsageSnapshot?
+    private var lastClaudeRefresh = Date.distantPast
     private let workerQueue = DispatchQueue(label: "local.codex.usage-rings.refresh", qos: .utility)
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let menuItem = NSMenuItem()
     private let menuController = MenuContentViewController()
@@ -13,7 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var presentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
     private var lastValidSnapshot: UsageSnapshot?
 
-    init(codexHome: URL) {
+    init(codexHome: URL, showsSettings: Bool = false) {
+        self.showsSettings = showsSettings
         client = UsageClient(codexHome: codexHome)
         super.init()
     }
@@ -23,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeAppearance()
         configureStatusItem()
         configureMenu()
+        if showsSettings { settingsController.present() }
         refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -52,9 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else {
             return
         }
-        button.image = RingRenderer.statusImage(baseLimits: BaseLimits())
+        button.image = RingRenderer.statusImage(limits: settings.enabled.map { _ in BaseLimits() }, icons: settings.enabled.map(\.icon))
         button.imagePosition = .imageOnly
-        button.toolTip = "Codex usage is loading…"
+        button.toolTip = "Uso usage is loading…"
         statusItem.isVisible = true
     }
 
@@ -66,19 +75,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
 
         menuController.onRefresh = { [weak self] in
-            self?.refresh()
+            self?.refresh(forceClaude: true)
         }
+        menuController.onSettings = { [weak self] in
+            guard let self else { return }
+            self.menu.cancelTracking()
+            self.settingsController.present()
+        }
+        settingsController.onChange = { [weak self] in self?.updateInterface() }
         menuController.onQuit = {
             NSApp.terminate(nil)
         }
         menuController.update(presentation)
     }
 
-    private func refresh() {
-        guard !presentation.isRefreshing else {
+    private func refresh(forceClaude: Bool = false) {
+        guard !presentation.isRefreshing, !claudePresentation.isRefreshing else {
             return
         }
         presentation.isRefreshing = true
+        let refreshClaude = Date().timeIntervalSince(lastClaudeRefresh) >= 300
+            || (forceClaude && claudePresentation.issue != .rateLimited)
+        if refreshClaude {
+            claudePresentation.isRefreshing = true
+            lastClaudeRefresh = Date()
+        }
         updateInterface()
 
         workerQueue.async { [weak self] in
@@ -88,6 +109,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let result = self.client.load()
             DispatchQueue.main.async { [weak self] in
                 self?.apply(result)
+            }
+            if refreshClaude {
+                let claudeResult = self.claudeClient.load()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    let resolution = UsageSnapshotPolicy.resolve(result: claudeResult, lastValidSnapshot: self.lastClaudeSnapshot)
+                    self.lastClaudeSnapshot = resolution.lastValidSnapshot
+                    self.claudePresentation = resolution.presentation
+                    self.updateInterface()
+                }
             }
         }
     }
@@ -104,33 +135,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateInterface() {
         precondition(Thread.isMainThread)
-        let baseLimits = presentation.snapshot?.baseLimits ?? BaseLimits()
-        statusItem.button?.image = RingRenderer.statusImage(baseLimits: baseLimits)
+        let rings = settings.enabled
+        let image = RingRenderer.statusImage(limits: rings.map { $0.limits(codex: presentation, claude: claudePresentation) }, icons: rings.map(\.icon))
+        statusItem.length = image.size.width
+        statusItem.button?.image = image
         statusItem.button?.toolTip = tooltipText()
-        menuController.update(presentation)
+        statusItem.button?.setAccessibilityLabel("Uso usage")
+        menuController.update(presentation, claude: claudePresentation)
     }
 
     private func tooltipText() -> String {
-        guard let snapshot = presentation.snapshot, snapshot.hasAnyData else {
-            if presentation.isRefreshing {
-                return "Codex usage is loading…"
+        var lines = ["Uso"]
+        for ring in settings.enabled {
+            let limits = ring.limits(codex: presentation, claude: claudePresentation)
+            for (name, bucket) in [("5h", limits.fiveHour), ("Weekly", limits.weekly)] {
+                if let bucket {
+                    let pace = UsagePaceCalculator.calculate(bucket: bucket).map(UsageFormatting.paceStatus) ?? "Pace unavailable"
+                    lines.append("\(ring.title) \(name): \(UsageFormatting.percent(bucket.remainingPercent)) remaining · \(pace)")
+                } else {
+                    lines.append("\(ring.title) \(name): unavailable")
+                }
             }
-            return presentation.issue?.title ?? "No Codex usage data"
         }
 
-        var lines = ["Codex Halo"]
-        if let fiveHour = snapshot.baseLimits.fiveHour {
-            lines.append("5h: \(UsageFormatting.percent(fiveHour.remainingPercent)) remaining · \(UsageFormatting.resetTime(fiveHour.resetAt))")
-        }
-        if let weekly = snapshot.baseLimits.weekly {
-            lines.append("1w: \(UsageFormatting.percent(weekly.remainingPercent)) remaining · \(UsageFormatting.resetDateText(weekly.resetAt))")
-        }
-        if !snapshot.additionalLimits.isEmpty {
-            lines.append("\(snapshot.additionalLimits.count) additional limit\(snapshot.additionalLimits.count == 1 ? "" : "s")")
-        }
-        lines.append("\(snapshot.source.rawValue) · Last updated \(UsageFormatting.updated(snapshot.updatedAt))")
-        if let issue = presentation.issue {
-            lines.append(issue.title)
+        for (name, value) in [("Codex", presentation), ("Claude", claudePresentation)] {
+            if let issue = value.issue { lines.append("\(name): \(issue.title)") }
+            if let snapshot = value.snapshot { lines.append("\(name): \(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))") }
         }
         return lines.joined(separator: "\n")
     }

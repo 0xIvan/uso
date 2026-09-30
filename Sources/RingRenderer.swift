@@ -1,114 +1,51 @@
 import AppKit
 
 enum RingRenderer {
-    static let logicalSize = CGSize(width: 22, height: 22)
-
-    static func draw(baseLimits: BaseLimits, in bounds: CGRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else {
-            return
-        }
-        let scale = min(bounds.width / logicalSize.width, bounds.height / logicalSize.height)
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        let outerRadius = 8.5 * scale
-        let innerRadius = 4.5 * scale
-        let lineWidth = 2.5 * scale
-
-        context.saveGState()
-        context.setShouldAntialias(true)
-        if baseLimits.hasExhaustedLimit {
-            drawExclamation(center: center, scale: scale, context: context)
-            context.restoreGState()
-            return
-        }
-        if baseLimits.fiveHour == nil, baseLimits.weekly == nil {
-            drawUnavailableRings(
-                center: center,
-                outerRadius: outerRadius,
-                innerRadius: innerRadius,
-                lineWidth: lineWidth,
-                context: context
-            )
-        }
-        if let weekly = baseLimits.weekly {
-            drawArc(
-                bucket: weekly,
-                center: center,
-                radius: outerRadius,
-                lineWidth: lineWidth,
-                context: context
-            )
-        }
-        if let fiveHour = baseLimits.fiveHour {
-            drawArc(
-                bucket: fiveHour,
-                center: center,
-                radius: innerRadius,
-                lineWidth: lineWidth,
-                context: context
-            )
-        }
-        context.restoreGState()
-    }
-
-    private static func drawExclamation(
-        center: CGPoint,
-        scale: CGFloat,
-        context: CGContext
-    ) {
-        let color = RingPalette.color(forRemaining: 0)
-        context.saveGState()
-        context.setLineCap(.round)
-        context.setLineWidth(2.8 * scale)
-        context.setStrokeColor(color.cgColor)
-        context.move(to: CGPoint(x: center.x, y: center.y + 5.5 * scale))
-        context.addLine(to: CGPoint(x: center.x, y: center.y - 0.5 * scale))
-        context.strokePath()
-        context.setFillColor(color.cgColor)
-        context.fillEllipse(in: CGRect(
-            x: center.x - 1.5 * scale,
-            y: center.y - 6.0 * scale,
-            width: 3.0 * scale,
-            height: 3.0 * scale
-        ))
-        context.restoreGState()
-    }
-
-    private static func drawUnavailableRings(
-        center: CGPoint,
-        outerRadius: CGFloat,
-        innerRadius: CGFloat,
-        lineWidth: CGFloat,
-        context: CGContext
-    ) {
-        context.saveGState()
-        context.setLineWidth(lineWidth)
-        context.setStrokeColor(NSColor(calibratedWhite: 0.55, alpha: 0.48).cgColor)
-        context.strokeEllipse(in: CGRect(
-            x: center.x - outerRadius,
-            y: center.y - outerRadius,
-            width: outerRadius * 2,
-            height: outerRadius * 2
-        ))
-        context.strokeEllipse(in: CGRect(
-            x: center.x - innerRadius,
-            y: center.y - innerRadius,
-            width: innerRadius * 2,
-            height: innerRadius * 2
-        ))
-        context.restoreGState()
-    }
-
-    static func statusImage(baseLimits: BaseLimits) -> NSImage {
-        let image = NSImage(size: logicalSize, flipped: false) { bounds in
-            draw(baseLimits: baseLimits, in: bounds)
+    static func statusImage(limits: [BaseLimits], icons: [NSImage?]? = nil) -> NSImage {
+        let size = CGSize(width: max(22, CGFloat(limits.count) * 24 - 2), height: 22)
+        let image = NSImage(size: size, flipped: false) { _ in
+            if limits.isEmpty {
+                let text = "u" as NSString
+                text.draw(at: CGPoint(x: 6, y: 3), withAttributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: NSColor.labelColor])
+            }
+            for (index, providerLimits) in limits.enumerated() {
+                let bounds = CGRect(x: CGFloat(index) * 24, y: 0, width: 22, height: 22)
+                drawPair(limits: providerLimits, in: bounds)
+                if let icons, icons.indices.contains(index), let icon = icons[index] {
+                    icon.draw(in: CGRect(x: bounds.maxX - 10, y: bounds.minY, width: 10, height: 10), from: .zero, operation: .sourceOver, fraction: 1)
+                }
+            }
             return true
         }
         image.isTemplate = false
         return image
     }
 
-    static func writePreview(baseLimits: BaseLimits, to path: URL) throws -> CGSize {
-        let pixelWidth = 44
+    private static func drawPair(limits: BaseLimits, in bounds: CGRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let scale = min(bounds.width, bounds.height) / 22
+        context.saveGState()
+        context.setLineWidth(2.5 * scale)
+        for (bucket, radius) in [(limits.weekly, 8.5 * scale), (limits.fiveHour, 4.5 * scale)] {
+            let trackColor: NSColor
+            if let bucket, bucket.remainingPercent <= 0 {
+                trackColor = PacePalette.color(for: bucket)
+            } else {
+                trackColor = NSColor.secondaryLabelColor.withAlphaComponent(0.25)
+            }
+            context.setStrokeColor(trackColor.cgColor)
+            context.strokeEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+            if let bucket {
+                drawArc(bucket: bucket, center: center, radius: radius, lineWidth: 2.5 * scale, context: context)
+            }
+        }
+        context.restoreGState()
+    }
+
+    static func writePreview(limits: [BaseLimits], icons: [NSImage?]? = nil, to path: URL) throws -> CGSize {
+        let image = statusImage(limits: limits, icons: icons)
+        let pixelWidth = Int(image.size.width * 2)
         let pixelHeight = 44
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
@@ -129,7 +66,7 @@ enum RingRenderer {
         NSGraphicsContext.current = context
         context.cgContext.clear(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
         context.cgContext.scaleBy(x: 2, y: 2)
-        draw(baseLimits: baseLimits, in: CGRect(origin: .zero, size: logicalSize))
+        image.draw(in: CGRect(origin: .zero, size: image.size))
         NSGraphicsContext.restoreGraphicsState()
 
         guard let png = bitmap.representation(using: .png, properties: [:]) else {
@@ -159,9 +96,7 @@ enum RingRenderer {
         context.saveGState()
         context.setLineCap(.round)
         context.setLineWidth(lineWidth)
-        let color = UsagePaceCalculator.calculate(bucket: bucket)
-            .map(PacePalette.color(for:))
-            ?? RingPalette.color(forRemaining: bucket.remainingPercent)
+        let color = PacePalette.color(for: bucket)
         context.setStrokeColor(color.cgColor)
         context.addArc(
             center: center,
@@ -183,39 +118,4 @@ enum RingRenderer {
 enum BaseLimitRole {
     case fiveHour
     case weekly
-
-    func limits(containing bucket: LimitBucket) -> BaseLimits {
-        switch self {
-        case .fiveHour:
-            return BaseLimits(fiveHour: bucket, weekly: nil)
-        case .weekly:
-            return BaseLimits(fiveHour: nil, weekly: bucket)
-        }
-    }
-}
-
-final class UsageRingView: NSView {
-    private let role: BaseLimitRole
-    private let bucket: LimitBucket
-
-    init(role: BaseLimitRole, bucket: LimitBucket) {
-        self.role = role
-        self.bucket = bucket
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable, message: "Use init(role:bucket:) to preserve ring semantics")
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: 24, height: 24)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        let insetBounds = bounds.insetBy(dx: 1, dy: 1)
-        RingRenderer.draw(baseLimits: role.limits(containing: bucket), in: insetBounds)
-    }
 }

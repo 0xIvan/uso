@@ -2,9 +2,11 @@ import Foundation
 import SQLite3
 
 final class UsageClient: @unchecked Sendable {
+    private let session = URLSession(configuration: .ephemeral)
     private let authPath: URL
     private let logsPath: URL
     private let endpoint = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+    private let resetCreditsEndpoint = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
 
     init(codexHome: URL) {
         authPath = codexHome.appendingPathComponent("auth.json")
@@ -12,8 +14,8 @@ final class UsageClient: @unchecked Sendable {
     }
 
     func load() -> UsageLoadResult {
-        let token = readAccessToken()
-        if let token, let live = readLiveUsage(accessToken: token) {
+        let credentials = readCredentials()
+        if let credentials, let live = readLiveUsage(credentials: credentials) {
             if live.hasAnyData {
                 return UsageLoadResult(snapshot: live, issue: nil)
             }
@@ -23,29 +25,51 @@ final class UsageClient: @unchecked Sendable {
         if let cached = readLatestCachedUsage(), cached.hasAnyData {
             return UsageLoadResult(
                 snapshot: cached,
-                issue: token == nil ? .notSignedIn : .offlineCached
+                issue: credentials == nil ? .notSignedIn : .offlineCached
             )
         }
 
         return UsageLoadResult(
             snapshot: nil,
-            issue: token == nil ? .notSignedIn : .unavailable
+            issue: credentials == nil ? .notSignedIn : .unavailable
         )
     }
 
-    private func readAccessToken() -> String? {
+    private func readCredentials() -> UsageDecoder.Credentials? {
         guard let data = try? Data(contentsOf: authPath) else {
             return nil
         }
-        return UsageDecoder.accessToken(from: data)
+        return UsageDecoder.credentials(from: data)
     }
 
-    private func readLiveUsage(accessToken: String) -> UsageSnapshot? {
-        var request = URLRequest(url: endpoint)
+    private func readLiveUsage(credentials: UsageDecoder.Credentials) -> UsageSnapshot? {
+        guard let data = readLiveData(from: endpoint, credentials: credentials),
+              var snapshot = UsageDecoder.liveSnapshot(from: data) else {
+            return nil
+        }
+        // Expiry details have a separate endpoint; failure must not discard live usage.
+        if snapshot.availableResetCount != 0,
+           let data = readLiveData(from: resetCreditsEndpoint, credentials: credentials),
+           let resets = UsageDecoder.availableResets(from: data) {
+            snapshot.availableResets = resets
+            snapshot.availableResetCount = resets.count
+        }
+        return snapshot
+    }
+
+    static func request(to url: URL, credentials: UsageDecoder.Credentials) -> URLRequest {
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 8
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // The bearer token can span accounts; select the same account as Codex.
+        request.setValue(credentials.accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        return request
+    }
+
+    private func readLiveData(from url: URL, credentials: UsageDecoder.Credentials) -> Data? {
+        let request = Self.request(to: url, credentials: credentials)
 
         final class ResponseBox: @unchecked Sendable {
             var data: Data?
@@ -54,7 +78,7 @@ final class UsageClient: @unchecked Sendable {
 
         let responseBox = ResponseBox()
         let semaphore = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: request) { data, response, _ in
+        session.dataTask(with: request) { data, response, _ in
             responseBox.data = data
             responseBox.response = response
             semaphore.signal()
@@ -66,7 +90,7 @@ final class UsageClient: @unchecked Sendable {
               let data = responseBox.data else {
             return nil
         }
-        return UsageDecoder.liveSnapshot(from: data)
+        return data
     }
 
     private func readLatestCachedUsage() -> UsageSnapshot? {

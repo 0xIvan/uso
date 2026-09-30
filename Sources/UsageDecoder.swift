@@ -1,18 +1,37 @@
 import Foundation
 
 enum UsageDecoder {
+    struct Credentials {
+        var accessToken: String
+        var accountID: String?
+    }
+
     private struct AuthPayload: Decodable {
         var tokens: AuthTokens?
     }
 
     private struct AuthTokens: Decodable {
         var access_token: String?
+        var account_id: String?
     }
 
     private struct LivePayload: Decodable {
         var plan_type: String?
         var rate_limit: RatePayload?
         var additional_rate_limits: [AdditionalUsagePayload]?
+        var rate_limit_reset_credits: ResetCreditsPayload?
+    }
+
+    private struct ResetCreditsPayload: Decodable {
+        // Banked resets can be available before usage is low enough to redeem one.
+        var available_count: Int?
+        var credits: [ResetCreditPayload]?
+    }
+
+    private struct ResetCreditPayload: Decodable {
+        var reset_type: String
+        var status: String
+        var expires_at: String?
     }
 
     private struct EventPayload: Decodable {
@@ -62,13 +81,31 @@ enum UsageDecoder {
         }
     }
 
-    static func accessToken(from data: Data) -> String? {
+    static func credentials(from data: Data) -> Credentials? {
         guard let payload = try? JSONDecoder().decode(AuthPayload.self, from: data),
               let token = payload.tokens?.access_token,
               !token.isEmpty else {
             return nil
         }
-        return token
+        let accountID = payload.tokens?.account_id.flatMap { $0.isEmpty ? nil : $0 }
+        return Credentials(accessToken: token, accountID: accountID)
+    }
+
+    static func availableResets(from data: Data) -> [AvailableReset]? {
+        guard let payload = try? JSONDecoder().decode(ResetCreditsPayload.self, from: data),
+              let credits = payload.credits else {
+            return nil
+        }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let standard = ISO8601DateFormatter()
+        return credits.filter { $0.status == "available" && $0.reset_type == "codex_rate_limits" }
+            .map { credit in
+                AvailableReset(expiresAt: credit.expires_at.flatMap {
+                    fractional.date(from: $0) ?? standard.date(from: $0)
+                })
+            }
+            .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
     }
 
     static func liveSnapshot(from data: Data, observedAt: Date = Date()) -> UsageSnapshot? {
@@ -92,7 +129,8 @@ enum UsageDecoder {
             baseLimits: LimitDurationMapper.map(primary: primary, secondary: secondary),
             additionalLimits: additional,
             updatedAt: observedAt,
-            source: .live
+            source: .live,
+            availableResetCount: payload.rate_limit_reset_credits?.available_count.flatMap { $0 >= 0 ? $0 : nil }
         )
     }
 

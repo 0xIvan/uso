@@ -88,26 +88,42 @@ enum UsageSource: String, Equatable {
     case cached = "Cached"
 }
 
+struct AvailableReset: Equatable {
+    var expiresAt: Date?
+}
+
 struct UsageSnapshot: Equatable {
     var planType: String?
     var baseLimits: BaseLimits
     var additionalLimits: [AdditionalLimit]
     var updatedAt: Date
     var source: UsageSource
+    var availableResetCount: Int?
+    var availableResets: [AvailableReset]?
 
     var hasAnyData: Bool {
         baseLimits.fiveHour != nil || baseLimits.weekly != nil || !additionalLimits.isEmpty
+            || availableResetCount != nil
     }
 }
 
-enum UsageIssue: Equatable {
+enum UsageIssue: Error, Equatable {
     case notSignedIn
+    case signInExpired
+    case rateLimited
+    case credentialUpdateFailed
     case noData
     case unavailable
     case offlineCached
 
     var title: String {
         switch self {
+        case .signInExpired:
+            return "Claude sign-in expired — run claude auth login"
+        case .rateLimited:
+            return "Claude rate limited — retrying in 5 minutes"
+        case .credentialUpdateFailed:
+            return "Could not save renewed Claude credentials"
         case .notSignedIn:
             return "Not signed in"
         case .noData:
@@ -306,6 +322,12 @@ enum UsagePaceBand: Equatable {
 }
 
 enum PacePalette {
+    static func color(for bucket: LimitBucket) -> NSColor {
+        if bucket.remainingPercent <= 0 { return RingPalette.color(forRemaining: 0) }
+        guard let pace = UsagePaceCalculator.calculate(bucket: bucket) else { return .secondaryLabelColor }
+        return color(for: pace)
+    }
+
     static func band(for pace: UsagePace) -> UsagePaceBand {
         if pace.differencePercent > 5 {
             return .critical
