@@ -1,0 +1,53 @@
+Uso
+
+A menu bar utility for viewing remaining Codex and Claude subscription usage.
+Independent software; not affiliated with or endorsed by OpenAI.
+
+REQUIREMENTS
+macOS 13 or newer, on Apple Silicon or Intel.
+A local Codex sign-in with a ChatGPT account and readable credentials in
+~/.codex/auth.json. API-key-only sign-in and Keychain-only credentials are
+not supported for Codex. Claude requires a Claude Code subscription sign-in.
+Uso renews expired Claude tokens when a usable refresh token is available.
+
+INSTALL
+1. Open the DMG and drag Uso into Applications.
+2. Eject the disk image.
+3. Open Uso from Applications. Its rings appear in the menu bar;
+   it does not open an ordinary window or appear in the Dock.
+4. Sign in to Codex if needed, then click the rings and choose Refresh.
+
+Open Settings from the menu to choose Codex and Claude. Each provider has one
+icon: weekly on the outer ring, 5-hour on the inner. Enabled providers appear
+side by side. Green means on pace,
+yellow warns within 5 percentage points over pace, and red means more than
+5 points over pace or exhausted. Gray indicates unavailable usage or pace.
+Codex refreshes every minute; Claude every five minutes. Cached values
+may be stale. Claude requires a subscription sign-in through Claude Code.
+
+START AT LOGIN (OPTIONAL)
+In macOS System Settings, search for Login Items. Add Uso from
+Applications to the list of apps that open at login.
+
+UPDATE
+Quit Uso from its menu, then replace the app in Applications with the
+new version. Updates are manual; Uso does not download code itself.
+
+REMOVE
+Quit Uso, remove it from Login Items if added, then move the app to Trash.
+Your Codex login and usage data are left untouched.
+If you previously installed from source using tools/install.sh, first
+run tools/uninstall.sh from that source checkout to remove its LaunchAgent.
+
+TROUBLESHOOTING
+If no rings are visible, check for menu bar space next to the camera notch.
+If usage is unavailable, open Codex and sign in again, then refresh Uso.
+Uso reads the Codex credential file but cannot renew an expired Codex token.
+If Codex stores credentials only in Keychain, Uso cannot read them.
+Cached usage requires a compatible local Codex logs_2.sqlite database.
+The usage endpoint and log format can change and interrupt Uso.
+A custom CODEX_HOME set only in your shell is not inherited by Finder;
+normal installation expects ~/.codex.
+
+If Claude sign-in has expired, run claude auth login, then click Refresh.
+Rate-limited Claude requests retry after five minutes.

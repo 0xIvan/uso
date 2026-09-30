@@ -1,3 +1,17 @@
 tmp/
 *.app/
 .DS_Store
+dist/
+.omx/
+
+# Keep local authentication and signing material out of source control.
+.env
+.env.*
+auth.json
+.credentials.json
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.mobileprovision
