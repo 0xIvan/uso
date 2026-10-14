@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterObservation = updaterController.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
             let canCheck = updater.canCheckForUpdates
             DispatchQueue.main.async { [weak self] in
-                self?.menuController.updateUpdaterAvailability(canCheck)
+                self?.settingsController.updateUpdaterAvailability(canCheck)
             }
         }
         updaterController.startUpdater()
@@ -92,9 +92,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.settingsController.present()
         }
         settingsController.onChange = { [weak self] in self?.updateInterface() }
-        menuController.onCheckForUpdates = { [weak self] in
+        settingsController.onCheckForUpdates = { [weak self] in
             guard let self, self.updaterController.updater.canCheckForUpdates else { return }
-            self.menu.cancelTracking()
             self.updaterController.checkForUpdates(nil)
         }
         menuController.onQuit = {

@@ -32,7 +32,8 @@ In macOS System Settings, search for Login Items. Add Uso from
 Applications to the list of apps that open at login.
 
 UPDATE
-Choose Check for Updates… in Uso's menu. If a published update is available,
+Open Settings from Uso's menu, then choose Check for Updates…
+If a published update is available,
 Sparkle shows its details and lets you install it and relaunch Uso.
 Background update checks and unattended installation are disabled.
 Older Uso builds without this button need one manual update: quit Uso, open the

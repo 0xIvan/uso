@@ -135,7 +135,7 @@ There is no separate feed-deployment job and no private feed-hosting credentials
 Manual update verification before publishing the first Sparkle-enabled release:
 
 1. Install it manually; previous versions cannot gain Sparkle remotely.
-2. Check that the menu button opens Sparkle's UI and that a repeated check is
+2. Check that the button in Settings opens Sparkle's UI and that a repeated check is
    disabled while the first is in progress.
 3. For a controlled update test, use a temporary older and newer app with a
    signed test feed; never redirect normal users to test releases.

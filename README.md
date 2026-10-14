@@ -14,7 +14,7 @@ Open the DMG, drag **Uso** to **Applications**, eject the image, and open the ap
 
 Requires macOS 13+ on Apple Silicon or Intel, and a local Codex ChatGPT sign-in whose credentials are readable in `~/.codex/auth.json`. Keychain-only and API-key-only authentication are not supported. Uso does not sign in or renew Codex tokens itself. Claude usage requires a Claude Code subscription sign-in stored in the macOS Keychain or `~/.claude/.credentials.json`; API keys do not provide subscription limits.
 
-See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Start at login is optional through macOS Login Items. After installing a Sparkle-enabled build, choose **Check for Updates…** from Uso’s menu to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
+See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Start at login is optional through macOS Login Items. After installing a Sparkle-enabled build, choose **Check for Updates…** in Uso’s Settings to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
 
 ## Build a shareable DMG
 
@@ -101,7 +101,7 @@ instructions for retrying a release job.
 ## In-app updates
 
 Sparkle checks `https://github.com/0xIvan/uso/releases/latest/download/appcast.xml`
-when the user chooses **Check for Updates…**. GitHub resolves that URL to the
+when the user chooses **Check for Updates…** in Settings. GitHub resolves that URL to the
 latest published stable release; drafts and prereleases are not offered.
 The feed points to a version-specific DMG download. Both feed and archive are
 verified with the public Ed25519 key embedded in `Info.plist`, in addition to

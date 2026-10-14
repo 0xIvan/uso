@@ -4,8 +4,6 @@ final class MenuContentViewController: NSViewController {
     var onRefresh: (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
-    var onCheckForUpdates: (() -> Void)?
-    private var canCheckForUpdates = false
 
     private var presentation = UsagePresentation.loading
     private var claudePresentation = UsagePresentation.loading
@@ -15,12 +13,6 @@ final class MenuContentViewController: NSViewController {
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 210))
         rebuild()
-    }
-
-    func updateUpdaterAvailability(_ canCheck: Bool) {
-        guard canCheckForUpdates != canCheck else { return }
-        canCheckForUpdates = canCheck
-        if isViewLoaded { rebuild() }
     }
 
     func update(_ presentation: UsagePresentation, claude: UsagePresentation = .loading) {
@@ -94,11 +86,6 @@ final class MenuContentViewController: NSViewController {
 
         content.addArrangedSubview(separator())
         content.addArrangedSubview(controlsView())
-        let updates = NSButton(title: "Check for Updates…", target: self, action: #selector(checkForUpdatesPressed))
-        updates.bezelStyle = .rounded
-        updates.controlSize = .small
-        updates.isEnabled = canCheckForUpdates
-        content.addArrangedSubview(updates)
 
         view.layoutSubtreeIfNeeded()
         let height = ceil(content.fittingSize.height) + 26
@@ -529,8 +516,6 @@ final class MenuContentViewController: NSViewController {
     @objc private func quitPressed() {
         onQuit?()
     }
-
-    @objc private func checkForUpdatesPressed() { onCheckForUpdates?() }
 }
 
 private final class UsagePaceBarView: NSView {

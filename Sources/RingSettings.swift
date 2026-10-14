@@ -50,11 +50,13 @@ final class RingSettings {
 
 final class SettingsWindowController: NSWindowController {
     private let settings: RingSettings
+    private let updateButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
     var onChange: (() -> Void)?
+    var onCheckForUpdates: (() -> Void)?
 
     init(settings: RingSettings) {
         self.settings = settings
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 265),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Uso Settings"
         window.isReleasedWhenClosed = false
@@ -77,6 +79,11 @@ final class SettingsWindowController: NSWindowController {
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(detail)
+        updateButton.target = self
+        updateButton.action = #selector(checkForUpdatesPressed)
+        updateButton.bezelStyle = .rounded
+        updateButton.isEnabled = false
+        stack.addArrangedSubview(updateButton)
         window.contentView?.addSubview(stack)
         if let content = window.contentView {
             NSLayoutConstraint.activate([
@@ -95,6 +102,12 @@ final class SettingsWindowController: NSWindowController {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
     }
+
+    func updateUpdaterAvailability(_ canCheck: Bool) {
+        updateButton.isEnabled = canCheck
+    }
+
+    @objc private func checkForUpdatesPressed() { onCheckForUpdates?() }
 
     @objc private func toggleRing(_ sender: NSButton) {
         settings.set(UsageRing.allCases[sender.tag], enabled: sender.state == .on)
