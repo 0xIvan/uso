@@ -1,4 +1,4 @@
-Release tooling now includes `tools/release.sh` for automatic version/build bumps and tag creation.
+Uso now includes **Check for Updates…** powered by Sparkle. Install this version manually once to receive future published updates in the app.
 
 Uso is a native macOS menu bar utility showing remaining Codex and Claude subscription usage. Requires macOS 13 or newer; the download includes Apple Silicon and Intel binaries.
 
@@ -7,7 +7,7 @@ Uso is a native macOS menu bar utility showing remaining Codex and Claude subscr
 - Credential access is read-only. Renew expired sign-ins through Codex or Claude Code, then refresh Uso.
 - Failed requests clear usage readings; no cached logs are used.
 
-Download the DMG under Assets, drag Uso to Applications, eject the image, and open Uso. The app and DMG are Developer ID signed and notarized by Apple. Updates are installed manually by quitting Uso and replacing the app.
+Download the DMG under Assets, drag Uso to Applications, eject the image, and open Uso. The app and DMG are Developer ID signed and notarized by Apple. Use Check for Updates… for future published updates; Sparkle downloads, installs, and relaunches Uso after you approve the update.
 
 Claude monitoring is experimental. Permission for this usage-only integration under Anthropic's subscription credential policy has not been established; read-only access does not resolve that question. Provider changes may interrupt support. Uso is independent software, not affiliated with or endorsed by OpenAI or Anthropic.
 

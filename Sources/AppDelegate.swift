@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Sparkle
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let showsSettings: Bool
@@ -16,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let menuController = MenuContentViewController()
     private var refreshTimer: Timer?
     private var appearanceObservation: NSKeyValueObservation?
+    private let updaterController = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+    private var updaterObservation: NSKeyValueObservation?
     private var presentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
 
     init(codexHome: URL, showsSettings: Bool = false) {
@@ -29,6 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeAppearance()
         configureStatusItem()
         configureMenu()
+        updaterObservation = updaterController.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+            let canCheck = updater.canCheckForUpdates
+            DispatchQueue.main.async { [weak self] in
+                self?.menuController.updateUpdaterAvailability(canCheck)
+            }
+        }
+        updaterController.startUpdater()
         if showsSettings { settingsController.present() }
         refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
@@ -39,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         refreshTimer?.invalidate()
         appearanceObservation?.invalidate()
+        updaterObservation?.invalidate()
     }
 
     private func observeAppearance() {
@@ -81,6 +92,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.settingsController.present()
         }
         settingsController.onChange = { [weak self] in self?.updateInterface() }
+        menuController.onCheckForUpdates = { [weak self] in
+            guard let self, self.updaterController.updater.canCheckForUpdates else { return }
+            self.menu.cancelTracking()
+            self.updaterController.checkForUpdates(nil)
+        }
         menuController.onQuit = {
             NSApp.terminate(nil)
         }

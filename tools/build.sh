@@ -8,6 +8,7 @@ MACOS_PATH="${CONTENTS_PATH}/MacOS"
 RESOURCES_PATH="${CONTENTS_PATH}/Resources"
 EXECUTABLE_PATH="${MACOS_PATH}/Uso"
 SIGNING_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+SPARKLE_DIR="$("${ROOT_DIR}/tools/sparkle.sh")"
 BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/uso-build.XXXXXX")"
 trap 'rm -rf "${BUILD_DIR}"' EXIT
 
@@ -25,7 +26,9 @@ for ARCH in arm64 x86_64; do
     -target "${ARCH}-apple-macosx13.0" \
     "${ROOT_DIR}"/Sources/*.swift \
     -o "${BUILD_DIR}/Uso-${ARCH}" \
-    -framework AppKit -framework Foundation -lsqlite3
+    -framework AppKit -framework Foundation \
+    -F "${SPARKLE_DIR}" -framework Sparkle \
+    -Xlinker -rpath -Xlinker @executable_path/../Frameworks
 done
 xcrun lipo -create "${BUILD_DIR}/Uso-arm64" "${BUILD_DIR}/Uso-x86_64" -output "${EXECUTABLE_PATH}"
 
@@ -41,10 +44,24 @@ xcrun actool "${ROOT_DIR}/Resources/AppIcon.xcassets" \
   --output-partial-info-plist "${BUILD_DIR}/AppIcon-Info.plist" \
   --output-format human-readable-text --warnings --notices
 
-SIGNING_OPTIONS=(--force --options runtime --sign "${SIGNING_IDENTITY}")
+mkdir -p "${CONTENTS_PATH}/Frameworks"
+ditto "${SPARKLE_DIR}/Sparkle.framework" "${CONTENTS_PATH}/Frameworks/Sparkle.framework"
+cp "${SPARKLE_DIR}/LICENSE" "${RESOURCES_PATH}/Sparkle-LICENSE.txt"
+
+SIGNING_OPTIONS=(--force --sign "${SIGNING_IDENTITY}")
 if [[ "${SIGNING_IDENTITY}" != "-" ]]; then
-  SIGNING_OPTIONS+=(--timestamp)
+  SIGNING_OPTIONS+=(--options runtime --timestamp)
 fi
+# Sign nested helpers before their enclosing framework and app; retain XPC entitlements.
+SPARKLE_FRAMEWORK="${CONTENTS_PATH}/Frameworks/Sparkle.framework"
+for COMPONENT in \
+  "Versions/B/XPCServices/Downloader.xpc" \
+  "Versions/B/XPCServices/Installer.xpc" \
+  "Versions/B/Autoupdate" \
+  "Versions/B/Updater.app"; do
+  codesign "${SIGNING_OPTIONS[@]}" --preserve-metadata=identifier,entitlements "${SPARKLE_FRAMEWORK}/${COMPONENT}"
+done
+codesign "${SIGNING_OPTIONS[@]}" "${SPARKLE_FRAMEWORK}"
 codesign "${SIGNING_OPTIONS[@]}" "${APP_PATH}"
 codesign --verify --deep --strict "${APP_PATH}"
 echo "Built ${APP_PATH}"

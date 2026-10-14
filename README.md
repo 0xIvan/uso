@@ -14,7 +14,7 @@ Open the DMG, drag **Uso** to **Applications**, eject the image, and open the ap
 
 Requires macOS 13+ on Apple Silicon or Intel, and a local Codex ChatGPT sign-in whose credentials are readable in `~/.codex/auth.json`. Keychain-only and API-key-only authentication are not supported. Uso does not sign in or renew Codex tokens itself. Claude usage requires a Claude Code subscription sign-in stored in the macOS Keychain or `~/.claude/.credentials.json`; API keys do not provide subscription limits.
 
-See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Start at login is optional through macOS Login Items. Updates are installed by quitting and replacing the app.
+See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Start at login is optional through macOS Login Items. After installing a Sparkle-enabled build, choose **Check for Updates…** from Uso’s menu to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
 
 ## Build a shareable DMG
 
@@ -26,7 +26,7 @@ tools/package.sh --preview
 
 This produces `dist/Uso-<version>-universal-preview.dmg` and a SHA-256 checksum. The package contains only the universal app, an Applications shortcut, and instructions. It does not contain your Codex credentials or history.
 
-The preview is ad-hoc signed, not notarized. On the receiving Mac, macOS may block opening it. For a copy you trust, use System Settings > Privacy & Security > Open Anyway after attempting to open it. Do not disable Gatekeeper. The filename and included notice distinguish it from a future notarized release.
+The preview is ad-hoc signed, not notarized. On the receiving Mac, macOS may block opening it. For a copy you trust, use System Settings > Privacy & Security > Open Anyway after attempting to open it. Do not disable Gatekeeper. The filename and included notice distinguish it from a notarized release.
 
 ## Development
 
@@ -36,7 +36,7 @@ tools/build.sh
 "tmp/Uso.app/Contents/MacOS/Uso" --preview tmp/menu-bar-preview.png
 ```
 
-The build creates an arm64 + x86_64 app targeting macOS 13 and verifies its signature. CLI checks exit without launching the GUI. `--codex-home PATH` overrides the credential directory for verification.
+The build downloads checksum-pinned Sparkle 2.10.0 into ignored `tmp/dependencies`, embeds its framework and license, creates an arm64 + x86_64 app targeting macOS 13, and verifies its signature. CLI checks exit without launching the GUI. `--codex-home PATH` overrides the credential directory for verification.
 
 Uso does not inspect `PATH` or execute the Codex or Claude CLI. It uses their
 existing subscription sign-ins from the credential stores described below.
@@ -91,8 +91,23 @@ Use `tools/release.sh minor`, `tools/release.sh major`, or an explicit version
 for a different bump; add `--dry-run` to preview without changing files or
 pushing. The tag triggers building, signing, notarization, and verification
 of a DMG on GitHub Actions. After successful verification, the workflow creates a
-**draft** GitHub Release with the DMG and SHA-256 checksum attached. Review the
+**draft** GitHub Release with the DMG, SHA-256 checksum, and signed Sparkle
+`appcast.xml` attached. Review the
 draft and perform the manual release checks before publishing it.
 
 See [release setup and checks](docs/releasing.md) for the required secrets and
 instructions for retrying a release job.
+
+## In-app updates
+
+Sparkle checks `https://github.com/0xIvan/uso/releases/latest/download/appcast.xml`
+when the user chooses **Check for Updates…**. GitHub resolves that URL to the
+latest published stable release; drafts and prereleases are not offered.
+The feed points to a version-specific DMG download. Both feed and archive are
+verified with the public Ed25519 key embedded in `Info.plist`, in addition to
+Apple code signing. No application credentials are included in update requests.
+The first Sparkle-enabled release must be installed manually. Until that release
+is published, the feed is unavailable and manual checks display an update error.
+
+The Sparkle framework's third-party license is included in the app bundle at
+`Contents/Resources/Sparkle-LICENSE.txt`.

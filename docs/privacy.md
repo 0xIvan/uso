@@ -27,3 +27,12 @@ When a token expires, Uso asks you to sign in through Claude Code again.
 It does not send refresh tokens, renew tokens, or write to Claude Code's Keychain
 entry or credential file. Anthropic processes usage requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
+
+When you choose Check for Updates…, Sparkle requests the signed update feed and,
+if you choose to install, the update archive from GitHub's release asset service.
+Requests may follow GitHub's redirects to its asset CDN. GitHub receives normal
+network request information such as your IP address and Uso's version/User-Agent.
+Codex and Claude credentials are never sent with update requests. Background
+update checks, unattended installation, and Sparkle system profiling are disabled.
+Sparkle stores downloaded update data temporarily and verifies the signed feed,
+archive signature, and application signature before installation.

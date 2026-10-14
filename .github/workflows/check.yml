@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate scripts and metadata
         run: |
-          bash -n tools/build.sh tools/package.sh tools/install.sh tools/uninstall.sh
+          bash -n tools/*.sh
           plutil -lint Info.plist
           git diff --check
       - name: Build universal app and run self-checks

@@ -69,6 +69,9 @@ Repository Actions secrets:
 - `APPLE_ID`: Apple account used for notarization.
 - `APPLE_TEAM_ID`: Developer team ID.
 - `APPLE_APP_SPECIFIC_PASSWORD`: Apple app-specific password for notarization.
+- `SPARKLE_PRIVATE_KEY`: Sparkle Ed25519 private signing key, exported by
+  `generate_keys --account uso-sparkle -x PATH`. Keep a secure backup; it must
+  match `SUPublicEDKey` in Info.plist. It is separate from Apple code signing.
 
 The release runner imports the certificate into a temporary Keychain, validates
 notarization credentials, and calls `tools/package.sh --release`. Certificate
@@ -88,7 +91,8 @@ For a release:
    default branch, exactly matching the remote, and refuses an existing tag.
 3. Watch the Release workflow. Only after signing, notarization, stapling,
    Gatekeeper, and image verification succeed does it attach the DMG and checksum
-   to a draft GitHub Release. Source ZIP/TAR archives are not the app installer.
+   and the signed `appcast.xml` to a draft GitHub Release. Source ZIP/TAR archives
+   are not the app installer.
 4. Download the attached DMG and complete the manual checks above. Publish the
    draft when ready; the release Assets section then provides public downloads.
 
@@ -103,3 +107,39 @@ Follow the printed retry command after resolving the remote error; do not rerun
 the helper and accidentally bump to another version. The atomic push ensures
 that the branch and release tag are either both accepted or both rejected.
 The helper does not publish the draft or change GitHub signing secrets.
+
+## Sparkle updates
+
+`tools/sparkle.sh` fetches the pinned Sparkle distribution and verifies its SHA-256
+before extraction. `tools/build.sh` embeds Sparkle, signs its nested helpers from
+the inside out, preserves XPC entitlements, and signs the framework and outer app.
+Ad-hoc previews omit hardened runtime so library validation does not block the
+framework; Developer ID releases retain hardened runtime and secure timestamps.
+
+After `tools/package.sh --release` produces the final notarized DMG, run
+`tools/appcast.sh` to generate its signed feed. Locally this uses the Keychain
+account `uso-sparkle`; CI supplies `SPARKLE_PRIVATE_KEY` over stdin. Never put
+private keys in the repository or process arguments. The final DMG must not be
+modified after generating its Sparkle signature. `tools/verify-appcast.swift`
+checks the version, build, URL, size, and archive signature against the embedded
+public key before the generated feed can replace the previous file. Sparkle's license is included
+inside the application bundle.
+
+Each draft contains its own `appcast.xml`, with a version-specific DMG URL.
+Publishing the stable release makes that file available through
+`https://github.com/0xIvan/uso/releases/latest/download/appcast.xml`.
+The app does not poll GitHub APIs or offer draft/prerelease updates. Do not mark a
+lower version as latest, and retain published release assets for existing clients.
+There is no separate feed-deployment job and no private feed-hosting credentials.
+
+Manual update verification before publishing the first Sparkle-enabled release:
+
+1. Install it manually; previous versions cannot gain Sparkle remotely.
+2. Check that the menu button opens Sparkle's UI and that a repeated check is
+   disabled while the first is in progress.
+3. For a controlled update test, use a temporary older and newer app with a
+   signed test feed; never redirect normal users to test releases.
+4. Verify download, signature validation, replacement, relaunch, and retained
+   preferences from an app copied to Applications. Complete this again against
+   published notarized builds when available. Until the first Sparkle release
+   is published, the production feed URL returns no feed.
