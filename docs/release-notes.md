@@ -1,3 +1,5 @@
+Release tooling now includes `tools/release.sh` for automatic version/build bumps and tag creation.
+
 Uso is a native macOS menu bar utility showing remaining Codex and Claude subscription usage. Requires macOS 13 or newer; the download includes Apple Silicon and Intel binaries.
 
 - Both providers refresh every five minutes, with a manual Refresh button.

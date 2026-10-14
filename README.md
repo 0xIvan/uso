@@ -24,7 +24,7 @@ On the build Mac, install Xcode and select it with `xcode-select`. Run:
 tools/package.sh --preview
 ```
 
-This produces `dist/Uso-0.2.3-universal-preview.dmg` and a SHA-256 checksum. The package contains only the universal app, an Applications shortcut, and instructions. It does not contain your Codex credentials or history.
+This produces `dist/Uso-<version>-universal-preview.dmg` and a SHA-256 checksum. The package contains only the universal app, an Applications shortcut, and instructions. It does not contain your Codex credentials or history.
 
 The preview is ad-hoc signed, not notarized. On the receiving Mac, macOS may block opening it. For a copy you trust, use System Settings > Privacy & Security > Open Anyway after attempting to open it. Do not disable Gatekeeper. The filename and included notice distinguish it from a future notarized release.
 
@@ -84,9 +84,13 @@ See [distribution terms](LICENSE).
 
 ## GitHub release workflow
 
-Pushes to `main` and pull requests run universal build checks. Push a version tag
-matching `Info.plist` (for example, `v0.2.3`) to build, sign, notarize, and verify
-a DMG on GitHub Actions. After successful verification, the workflow creates a
+Pushes to `main` and pull requests run universal build checks. From a clean,
+fully pushed default branch, run `tools/release.sh` to increment the patch
+version and build number, commit the metadata, and push a matching release tag.
+Use `tools/release.sh minor`, `tools/release.sh major`, or an explicit version
+for a different bump; add `--dry-run` to preview without changing files or
+pushing. The tag triggers building, signing, notarization, and verification
+of a DMG on GitHub Actions. After successful verification, the workflow creates a
 **draft** GitHub Release with the DMG and SHA-256 checksum attached. Review the
 draft and perform the manual release checks before publishing it.
 

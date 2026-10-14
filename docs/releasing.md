@@ -77,9 +77,15 @@ execution. Secrets are never committed and are not used for pull-request builds.
 
 For a release:
 
-1. Increment the version and build number in `Info.plist`, update
-   `docs/release-notes.md`, and commit and push the reviewed changes to `main`.
-2. Create and push the matching annotated version tag, such as `v0.2.3`.
+1. Update `docs/release-notes.md`, then commit and push the reviewed application
+   and documentation changes to the default branch (`main`).
+2. Run `tools/release.sh --dry-run` to preview the next patch release. Run
+   `tools/release.sh` to bump the version and build number, commit only
+   `Info.plist`, and atomically push the default branch and annotated tag.
+   Use `tools/release.sh minor`, `tools/release.sh major`, or an explicit
+   version such as `tools/release.sh 0.3.0` when needed. Each increments the
+   build number by one. The command requires a clean checkout on origin's
+   default branch, exactly matching the remote, and refuses an existing tag.
 3. Watch the Release workflow. Only after signing, notarization, stapling,
    Gatekeeper, and image verification succeed does it attach the DMG and checksum
    to a draft GitHub Release. Source ZIP/TAR archives are not the app installer.
@@ -91,3 +97,9 @@ workflow can be rerun against the same tag if the source does not need changes;
 manual workflow dispatch must select that tag. A rerun can replace assets on a
 draft, but refuses to overwrite an already published release. If source changes
 are needed, use a new version/tag rather than moving an existing release tag.
+
+If the helper's push fails, its release commit and tag stay local for recovery.
+Follow the printed retry command after resolving the remote error; do not rerun
+the helper and accidentally bump to another version. The atomic push ensures
+that the branch and release tag are either both accepted or both rejected.
+The helper does not publish the draft or change GitHub signing secrets.
