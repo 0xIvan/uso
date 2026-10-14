@@ -89,5 +89,5 @@ if ! git push --atomic origin "HEAD:$DEFAULT_REF" "refs/tags/$TAG"; then
   echo "After resolving the remote error, retry: git push --atomic origin HEAD:$DEFAULT_REF refs/tags/$TAG" >&2
   exit 1
 fi
-echo "Pushed $TAG. GitHub Actions will create a draft release with the notarized DMG."
+echo "Pushed $TAG. GitHub Actions will build, verify, and publish the notarized release."
 echo "https://github.com/0xIvan/uso/actions/workflows/release.yml"

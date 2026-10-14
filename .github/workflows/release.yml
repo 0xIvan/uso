@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-public
   cancel-in-progress: false
 
 jobs:
@@ -78,6 +78,13 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "Uso $version" --notes-file docs/release-notes.md
           fi
           gh release upload "$RELEASE_TAG" "dist/Uso-$version-universal.dmg" "dist/Uso-$version-universal.dmg.sha256" dist/appcast.xml --clobber
+      - name: Publish verified release
+        run: |
+          latest=true
+          if gh release view --json tagName > "$RUNNER_TEMP/latest-release.json"; then
+            latest=$(python3 -c 'import json,sys; current=json.load(open(sys.argv[1]))["tagName"].removeprefix("v"); incoming=sys.argv[2].removeprefix("v"); print(str(tuple(map(int,incoming.split("."))) >= tuple(map(int,current.split(".")))).lower())' "$RUNNER_TEMP/latest-release.json" "$RELEASE_TAG")
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest="$latest"
       - name: Remove signing material
         if: always()
         run: |

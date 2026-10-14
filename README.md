@@ -84,16 +84,20 @@ See [distribution terms](LICENSE).
 
 ## GitHub release workflow
 
-Pushes to `main` and pull requests run universal build checks. From a clean,
-fully pushed default branch, run `tools/release.sh` to increment the patch
-version and build number, commit the metadata, and push a matching release tag.
-Use `tools/release.sh minor`, `tools/release.sh major`, or an explicit version
-for a different bump; add `--dry-run` to preview without changing files or
-pushing. The tag triggers building, signing, notarization, and verification
-of a DMG on GitHub Actions. After successful verification, the workflow creates a
-**draft** GitHub Release with the DMG, SHA-256 checksum, and signed Sparkle
-`appcast.xml` attached. Review the
-draft and perform the manual release checks before publishing it.
+Pushes to `main` run universal build checks, then automatically bump the patch
+version and build number, push a release commit and tag, and start the release
+workflow. It signs, notarizes, and verifies the DMG and Sparkle feed before
+publishing a stable GitHub Release with the DMG, checksum, and `appcast.xml`.
+Installed apps can then discover the update. Failed checks prevent publication.
+Pull requests run checks only. Superseded pushes are skipped in favor of the
+newest commit. The bot's version commit does not trigger another release.
+
+Pull `main` before your next change because automation writes the version commit
+back to it. For a minor, major, or explicit version, use `tools/release.sh minor`,
+`tools/release.sh major`, or `tools/release.sh VERSION` from a clean, fully pushed
+default branch. Tagged release commits do not receive another automatic bump.
+Use `--dry-run` to preview. To retry a failed release, rerun its Release workflow
+or dispatch `release.yml` on the existing tag; do not create another version.
 
 See [release setup and checks](docs/releasing.md) for the required secrets and
 instructions for retrying a release job.

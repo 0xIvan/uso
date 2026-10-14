@@ -1,6 +1,4 @@
-Moved **Check for Updates…** into Settings to keep the menu compact.
-
-If you have v0.2.5 installed, choose **Check for Updates…** from its menu to install this release. In v0.2.6, future update checks live in Settings. Older builds without Sparkle need one manual installation.
+Releases now publish automatically after a push to main passes build checks, signing, notarization, and Sparkle verification. The app continues to check for updates manually through Settings.
 
 Uso is a native macOS menu bar utility showing remaining Codex and Claude subscription usage. Requires macOS 13 or newer; the download includes Apple Silicon and Intel binaries.
 

@@ -26,3 +26,40 @@ jobs:
           for arch in arm64 x86_64; do
             xcrun lipo tmp/Uso.app/Contents/MacOS/Uso -verify_arch "$arch"
           done
+
+  auto-release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    concurrency:
+      group: auto-release-main
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Bump version and dispatch verified release
+        run: |
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo 'A newer push superseded this commit; its checks will handle the release.'
+            exit 0
+          fi
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)
+          if [[ "$(git rev-parse "v$version^{commit}" 2>/dev/null || true)" == "$(git rev-parse HEAD)" ]]; then
+            echo 'This commit already has a release tag; no additional bump needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          tools/release.sh
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)
+          # GITHUB_TOKEN pushes do not trigger workflows; dispatch the tag explicitly.
+          gh workflow run release.yml --ref "v$version"

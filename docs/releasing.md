@@ -58,8 +58,17 @@ Verified on 2026-10-14:
 ## GitHub Actions
 
 The repository default branch is `main`. Build checks run on pushes to `main`
-and pull requests. `.github/workflows/release.yml` runs only for version tags;
-ordinary pushes do not create releases.
+and pull requests. After a successful main push, the `auto-release` job uses
+`tools/release.sh` to increment the patch version and build number, push a bot
+commit and tag, and explicitly dispatch `release.yml` on that tag. Bot pushes
+using GITHUB_TOKEN do not recursively trigger workflows. Pull before your next
+change to incorporate the version commit. Superseded pushes and commits already
+tagged for release are skipped. Pull requests never release.
+
+The release workflow verifies signing, notarization, tickets, Gatekeeper,
+checksums, and Sparkle signatures before uploading assets to a draft and then
+publishing it as a stable release. A failed job leaves any draft unpublished.
+Retry the Release workflow on the existing tag, not the auto-release job.
 
 Repository Actions secrets:
 
@@ -80,21 +89,17 @@ execution. Secrets are never committed and are not used for pull-request builds.
 
 For a release:
 
-1. Update `docs/release-notes.md`, then commit and push the reviewed application
-   and documentation changes to the default branch (`main`).
-2. Run `tools/release.sh --dry-run` to preview the next patch release. Run
-   `tools/release.sh` to bump the version and build number, commit only
-   `Info.plist`, and atomically push the default branch and annotated tag.
-   Use `tools/release.sh minor`, `tools/release.sh major`, or an explicit
-   version such as `tools/release.sh 0.3.0` when needed. Each increments the
-   build number by one. The command requires a clean checkout on origin's
-   default branch, exactly matching the remote, and refuses an existing tag.
-3. Watch the Release workflow. Only after signing, notarization, stapling,
-   Gatekeeper, and image verification succeed does it attach the DMG and checksum
-   and the signed `appcast.xml` to a draft GitHub Release. Source ZIP/TAR archives
-   are not the app installer.
-4. Download the attached DMG and complete the manual checks above. Publish the
-   draft when ready; the release Assets section then provides public downloads.
+1. Update `docs/release-notes.md`, commit the application and documentation changes,
+   and push to `main`. Successful build checks automatically create the next patch
+   release. Review changes before pushing: publication is automatic.
+2. For a deliberate minor/major version, use `tools/release.sh minor`,
+   `tools/release.sh major`, or an explicit version from a clean, fully pushed
+   default branch. Use `--dry-run` to preview. A release commit already tagged by
+   this helper will not get an extra automatic bump.
+3. Watch Build checks and Release in GitHub Actions. The latter builds, signs,
+   notarizes, verifies, and publishes the DMG, checksum, and signed appcast.
+4. Download the public DMG and verify installation and the in-app upgrade flow.
+   Automated checks do not replace hardware or live application verification.
 
 For a failed run, inspect its log and fix the specific failure. The Release
 workflow can be rerun against the same tag if the source does not need changes;
@@ -106,7 +111,8 @@ If the helper's push fails, its release commit and tag stay local for recovery.
 Follow the printed retry command after resolving the remote error; do not rerun
 the helper and accidentally bump to another version. The atomic push ensures
 that the branch and release tag are either both accepted or both rejected.
-The helper does not publish the draft or change GitHub signing secrets.
+The helper triggers the release workflow, which publishes after verification.
+It does not change GitHub signing secrets.
 
 ## Sparkle updates
 
