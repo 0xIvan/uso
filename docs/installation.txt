@@ -8,7 +8,8 @@ macOS 13 or newer, on Apple Silicon or Intel.
 A local Codex sign-in with a ChatGPT account and readable credentials in
 ~/.codex/auth.json. API-key-only sign-in and Keychain-only credentials are
 not supported for Codex. Claude requires a Claude Code subscription sign-in.
-Uso renews expired Claude tokens when a usable refresh token is available.
+Uso reads credentials without modifying them. Renew expired sign-ins through
+Codex or Claude Code, then refresh Uso.
 
 INSTALL
 1. Open the DMG and drag Uso into Applications.
@@ -22,8 +23,9 @@ icon: weekly on the outer ring, 5-hour on the inner. Enabled providers appear
 side by side. Green means on pace,
 yellow warns within 5 percentage points over pace, and red means more than
 5 points over pace or exhausted. Gray indicates unavailable usage or pace.
-Codex refreshes every minute; Claude every five minutes. Cached values
-may be stale. Claude requires a subscription sign-in through Claude Code.
+Codex and Claude refresh every five minutes. Failed requests clear
+the displayed usage. Uso does not show cached readings or read Codex logs.
+Claude requires a subscription sign-in through Claude Code.
 
 START AT LOGIN (OPTIONAL)
 In macOS System Settings, search for Login Items. Add Uso from
@@ -44,10 +46,25 @@ If no rings are visible, check for menu bar space next to the camera notch.
 If usage is unavailable, open Codex and sign in again, then refresh Uso.
 Uso reads the Codex credential file but cannot renew an expired Codex token.
 If Codex stores credentials only in Keychain, Uso cannot read them.
-Cached usage requires a compatible local Codex logs_2.sqlite database.
-The usage endpoint and log format can change and interrupt Uso.
+The upstream usage endpoints can change and interrupt Uso.
 A custom CODEX_HOME set only in your shell is not inherited by Finder;
 normal installation expects ~/.codex.
 
 If Claude sign-in has expired, run claude auth login, then click Refresh.
 Rate-limited Claude requests retry after five minutes.
+
+CLAUDE INTEGRATION STATUS
+Claude monitoring is experimental and read-only. Permission for this usage-only
+integration under Anthropic's rules for subscription credentials has not been
+established. Read-only credential access does not resolve that policy question.
+Provider changes may interrupt Claude support. See:
+https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use
+
+SUPPORT
+https://github.com/0xIvan/uso/issues
+Include the Uso version, macOS version, provider, and steps to reproduce.
+Never attach credential files, tokens, passwords, or unredacted account details.
+
+DISTRIBUTION TERMS
+The compiled app is free to use for personal or commercial purposes.
+Source rights are retained. See the included License.txt for details.

@@ -2,11 +2,11 @@
 
 App name: **Uso**. Repository name: `uso`.
 
-A native macOS menu bar utility showing remaining Codex and Claude subscription usage. Choose Codex and Claude in Settings. Each provider has one icon with weekly usage on the outer ring and 5-hour usage on the inner ring. Enabled providers appear side by side. Independent software, not affiliated with OpenAI or Anthropic.
+A native macOS menu bar utility showing remaining Codex and Claude subscription usage. Choose Codex and Claude in Settings. Each provider has one icon with weekly usage on the outer ring and 5-hour usage on the inner ring. Only reported limits appear: accounts without a 5-hour limit show no inner ring. Enabled providers appear side by side. Independent software, not affiliated with OpenAI or Anthropic.
 
-All rings use the same pace calculation: usage compared with the elapsed portion of its window. Green means on or under pace (with a 0.5-point tolerance), yellow warns up to 5 percentage points over pace, and red means more than 5 points over pace or exhausted. Gray means usage or pace is unavailable. With all rings disabled, a small “u” button keeps Settings accessible. Choices persist between launches.
+All rings use the same pace calculation: usage compared with the elapsed portion of its window. Green means on or under pace (with a 0.5-point tolerance), yellow warns up to 5 percentage points over pace, and red means more than 5 points over pace. When either usage limit reaches 0% remaining, that provider's rings become a red exclamation mark. Gray means pace is unavailable for a reported limit. With all rings disabled, a small “u” button keeps Settings accessible. Choices persist between launches.
 
-Providers without a local subscription sign-in are hidden from the menu bar and usage menu. Settings keeps your visibility preferences for when you sign in again. Temporary failures retain signed-in providers. If neither provider is signed in, a small Uso button keeps Settings and Refresh accessible. Claude five-hour usage at 0% without a reset timestamp is shown as “Window not started.”
+Providers without a local subscription sign-in are hidden from the menu bar and usage menu. Settings keeps your visibility preferences for when you sign in again. Failed fetches keep signed-in providers visible but hide usage values and show “Log in again” with provider-specific instructions. If neither provider is signed in, a small Uso button keeps Settings and Refresh accessible. Claude five-hour usage at 0% without a reset timestamp is shown as “Window not started.”
 
 ## Install on another Mac
 
@@ -24,7 +24,7 @@ On the build Mac, install Xcode and select it with `xcode-select`. Run:
 tools/package.sh --preview
 ```
 
-This produces `dist/Uso-0.2.1-universal-preview.dmg` and a SHA-256 checksum. The package contains only the universal app, an Applications shortcut, and instructions. It does not contain your Codex credentials or history.
+This produces `dist/Uso-0.2.3-universal-preview.dmg` and a SHA-256 checksum. The package contains only the universal app, an Applications shortcut, and instructions. It does not contain your Codex credentials or history.
 
 The preview is ad-hoc signed, not notarized. On the receiving Mac, macOS may block opening it. For a copy you trust, use System Settings > Privacy & Security > Open Anyway after attempting to open it. Do not disable Gatekeeper. The filename and included notice distinguish it from a future notarized release.
 
@@ -45,7 +45,7 @@ are supplied through environment variables and are not embedded in the source.
 
 `tools/install.sh` is the legacy developer installation path: it builds the app, installs it in Applications and creates a per-user LaunchAgent. `tools/uninstall.sh` removes that installation. DMG recipients should use the manual installation instructions instead.
 
-## Future public releases
+## Public releases
 
 The optional `tools/package.sh --release` path requires `CODE_SIGN_IDENTITY` set to a Developer ID Application certificate name and `NOTARY_PROFILE` set to an existing notarytool Keychain profile. It signs with hardened runtime, notarizes and staples the app and DMG, and checks Gatekeeper before placing the result in `dist`. It does not publish or upload to a download site. Notarization submits the built software to Apple.
 
@@ -53,10 +53,42 @@ See [release checks](docs/releasing.md) before using that path.
 
 ## Data sources
 
-Uso requests `https://chatgpt.com/backend-api/wham/usage` every 60 seconds with the local access token and the account ID from `auth.json` in the `ChatGPT-Account-Id` header, so allowance is read for the same account selected in Codex. Requests use an ephemeral URL session. If unavailable, it reads the newest compatible `codex.rate_limits` event in `logs_2.sqlite` and can retain the last snapshot in memory. These upstream interfaces can change. Cached values do not confirm the current allowance.
+Uso requests `https://chatgpt.com/backend-api/wham/usage` every five minutes with the local access token and the account ID from `auth.json` in the `ChatGPT-Account-Id` header, so allowance is read for the same account selected in Codex. Requests use an ephemeral URL session. Failed fetches clear the displayed usage; local logs and previous readings are not used as fallback. These upstream interfaces can change.
 
 When resets may be available, Uso also reads `/backend-api/wham/rate-limit-reset-credits` to show each available Codex reset's expiry in local time, soonest first. If that request fails, the usage summary still loads and expiry dates show as unavailable.
 
 `UsageDecoder.swift` maps durations to five-hour and weekly buckets. `RingRenderer.swift` shares artwork between the menu bar and preview. `AppDelegate.swift` performs requests off the main thread and updates AppKit on the main thread.
 
-Claude usage is read from `https://api.anthropic.com/api/oauth/usage` using the existing Claude Code OAuth access token. Claude refreshes every five minutes or when Refresh is clicked. Failed requests retain the last successful reading in memory and label it cached. Expired Claude tokens are renewed using the existing refresh token at `https://platform.claude.com/v1/oauth/token`; rotated credentials are saved back to their original Keychain entry or credential file. Tokens are never logged. Rate-limited requests wait five minutes before retrying. Both usage endpoints are upstream interfaces that may change. The stable `local.codex.usage-rings` bundle and launch-agent identifier is retained for installation continuity.
+Claude usage is read from `https://api.anthropic.com/api/oauth/usage` using the existing Claude Code OAuth access token. Claude refreshes every five minutes or when Refresh is clicked. Failed requests clear the displayed usage and show “Log in again” with the Claude login command. Uso never renews tokens or modifies Claude Code credentials. When the token expires, sign in through Claude Code and refresh Uso. Tokens are never logged. Rate-limited requests wait five minutes before retrying. Both usage endpoints are upstream interfaces that may change. The stable `local.codex.usage-rings` bundle and launch-agent identifier is retained for installation continuity.
+
+## Claude integration status
+
+Claude monitoring is read-only and uses an upstream usage endpoint with an existing
+Claude Code sign-in. Anthropic's [authentication and credential-use guidance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)
+restricts third-party use of subscription credentials. Permission for Uso's usage-only
+integration has not been established. Keeping credentials read-only prevents Uso
+from overwriting a Claude Code login; it does not resolve that policy question.
+Claude support is experimental and can stop working if the provider changes access.
+
+## Support
+
+Report problems at [GitHub Issues](https://github.com/0xIvan/uso/issues).
+Include the Uso version, macOS version, provider, and steps to reproduce.
+Do not attach credential files, tokens, passwords, or unredacted account details.
+
+## Distribution terms
+
+The compiled app is free to use for personal or commercial purposes. Source
+rights are retained; this repository is not licensed as open-source software.
+See [distribution terms](LICENSE).
+
+## GitHub release workflow
+
+Pushes to `main` and pull requests run universal build checks. Push a version tag
+matching `Info.plist` (for example, `v0.2.3`) to build, sign, notarize, and verify
+a DMG on GitHub Actions. After successful verification, the workflow creates a
+**draft** GitHub Release with the DMG and SHA-256 checksum attached. Review the
+draft and perform the manual release checks before publishing it.
+
+See [release setup and checks](docs/releasing.md) for the required secrets and
+instructions for retrying a release job.

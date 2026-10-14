@@ -1,37 +1,24 @@
 import Foundation
-import Darwin
 
 final class ClaudeUsageClient {
     private let session = URLSession(configuration: .ephemeral)
 
     private struct Credentials {
-        var document: [String: Any]
-        var path: URL?
+        var accessToken: String
+        var expiresAt: Double
 
-        var oauth: [String: Any] { document["claudeAiOauth"] as? [String: Any] ?? [:] }
-        var accessToken: String { oauth["accessToken"] as? String ?? "" }
-        var refreshToken: String? { oauth["refreshToken"] as? String }
-        var expiresAt: Double { oauth["expiresAt"] as? Double ?? 0 }
-        var needsRefresh: Bool { expiresAt > 0 && expiresAt <= Date().timeIntervalSince1970 * 1000 + 60_000 }
+        var isExpired: Bool { expiresAt > 0 && expiresAt <= Date().timeIntervalSince1970 * 1000 }
     }
 
     func load() -> UsageLoadResult {
-        guard var credentials = readCredentials() else {
+        guard let credentials = readCredentials() else {
             return UsageLoadResult(snapshot: nil, issue: .notSignedIn)
         }
-        if credentials.needsRefresh {
-            switch refresh(credentials) {
-            case .success(let updated): credentials = updated
-            case .failure(let issue): return UsageLoadResult(snapshot: nil, issue: issue)
-            }
+        // Claude Code owns token renewal; writing its store can overwrite a concurrent login.
+        guard !credentials.isExpired else {
+            return UsageLoadResult(snapshot: nil, issue: .signInExpired)
         }
-        var response = fetchUsage(token: credentials.accessToken)
-        if response.status == 401, credentials.refreshToken != nil {
-            switch refresh(credentials) {
-            case .success(let updated): response = fetchUsage(token: updated.accessToken)
-            case .failure(let issue): return UsageLoadResult(snapshot: nil, issue: issue)
-            }
-        }
+        let response = fetchUsage(token: credentials.accessToken)
         guard let status = response.status else { return UsageLoadResult(snapshot: nil, issue: .unavailable) }
         guard (200..<300).contains(status), let data = response.data, let snapshot = Self.decode(data) else {
             return UsageLoadResult(snapshot: nil, issue: Self.issue(for: status))
@@ -50,7 +37,8 @@ final class ClaudeUsageClient {
         var request = original
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Uso/0.2.1", forHTTPHeaderField: "User-Agent")
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        request.setValue("Uso/\(version)", forHTTPHeaderField: "User-Agent")
         final class ResponseBox: @unchecked Sendable {
             var data: Data?
             var response: URLResponse?
@@ -73,11 +61,11 @@ final class ClaudeUsageClient {
     private func readCredentials() -> Credentials? {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let path = home.appendingPathComponent(".claude/.credentials.json")
-        let candidates = [(readKeychain(), Optional<URL>.none), (try? Data(contentsOf: path), Optional(path))]
-        return candidates.compactMap { data, path -> Credentials? in
-            guard let data, Self.token(from: data) != nil,
-                  let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-            return Credentials(document: document, path: path)
+        return [readKeychain(), try? Data(contentsOf: path)].compactMap { data -> Credentials? in
+            guard let data, let token = Self.token(from: data),
+                  let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let oauth = document["claudeAiOauth"] as? [String: Any] else { return nil }
+            return Credentials(accessToken: token, expiresAt: oauth["expiresAt"] as? Double ?? 0)
         }.max { $0.expiresAt < $1.expiresAt }
     }
 
@@ -85,102 +73,22 @@ final class ClaudeUsageClient {
         runSecurity(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
     }
 
-    private func runSecurity(_ arguments: [String], input: Data? = nil) -> Data? {
+    private func runSecurity(_ arguments: [String]) -> Data? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = arguments
         let output = Pipe()
-        let stdin = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
-        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
+        process.standardInput = FileHandle.nullDevice
         let completion = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in completion.signal() }
         guard (try? process.run()) != nil else { return nil }
-        if let input {
-            stdin.fileHandleForWriting.write(input)
-            try? stdin.fileHandleForWriting.close()
-        }
         guard completion.wait(timeout: .now() + 5) == .success else {
             process.terminate()
             return nil
         }
         return process.terminationStatus == 0 ? output.fileHandleForReading.readDataToEndOfFile() : nil
-    }
-
-    private func refresh(_ original: Credentials) -> Result<Credentials, UsageIssue> {
-        let lockPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/.uso-refresh.lock").path
-        let lock = open(lockPath, O_CREAT | O_RDWR, 0o600)
-        guard lock >= 0 else { return .failure(.unavailable) }
-        defer { close(lock) }
-        guard flock(lock, LOCK_EX | LOCK_NB) == 0 else { return .failure(.unavailable) }
-        defer { flock(lock, LOCK_UN) }
-        guard let refreshToken = original.refreshToken, !refreshToken.isEmpty else { return .failure(.signInExpired) }
-        // A CLI refresh may have completed since the first read; never rotate its old token.
-        if let current = readCredentials(), current.accessToken != original.accessToken, !current.needsRefresh {
-            return .success(current)
-        }
-        var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "grant_type": "refresh_token", "refresh_token": refreshToken,
-            "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-        ])
-        let response = send(request)
-        guard let status = response.status else { return .failure(.unavailable) }
-        guard (200..<300).contains(status), let data = response.data,
-              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = result["access_token"] as? String, !token.isEmpty,
-              let expiresIn = result["expires_in"] as? Double, expiresIn > 0 else {
-            if status == 400 || status == 401 { return .failure(.signInExpired) }
-            return .failure(Self.issue(for: status))
-        }
-        var updated = original
-        updated.document = Self.renewedDocument(original.document, response: result, token: token, expiresIn: expiresIn)
-        // Refresh tokens can rotate. Persist the complete document back to its source.
-        // Check for another writer before replacing any credential fields.
-        guard let current = readCredentials(), current.accessToken == original.accessToken else {
-            return readCredentials().map(Result.success) ?? .failure(.unavailable)
-        }
-        guard save(updated) else { return .failure(.credentialUpdateFailed) }
-        return .success(updated)
-    }
-
-    private func save(_ credentials: Credentials) -> Bool {
-        guard let data = try? JSONSerialization.data(withJSONObject: credentials.document) else { return false }
-        if let path = credentials.path {
-            do {
-                try data.write(to: path, options: .atomic)
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
-                return true
-            } catch { return false }
-        }
-        guard let metadata = runSecurity(["find-generic-password", "-s", "Claude Code-credentials"]),
-              let text = String(data: metadata, encoding: .utf8),
-              let line = text.components(separatedBy: "\n").first(where: { $0.contains("\"acct\"<blob>=\"") }),
-              let start = line.range(of: "<blob>=\"") else { return false }
-        let account = String(line[start.upperBound...].dropLast())
-        func quote(_ value: String) -> String {
-            "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
-        }
-        guard let document = String(data: data, encoding: .utf8) else { return false }
-        // Send credentials over stdin; never expose tokens in process arguments.
-        let command = "add-generic-password -U -s \"Claude Code-credentials\" -a " + quote(account) + " -w " + quote(document) + "\n"
-        guard runSecurity(["-i"], input: Data(command.utf8)) != nil,
-              let saved = readKeychain() else { return false }
-        return Self.token(from: saved) == credentials.accessToken
-    }
-
-    static func renewedDocument(_ original: [String: Any], response: [String: Any], token: String, expiresIn: Double) -> [String: Any] {
-        var document = original
-        var oauth = original["claudeAiOauth"] as? [String: Any] ?? [:]
-        oauth["accessToken"] = token
-        if let refreshToken = response["refresh_token"] as? String { oauth["refreshToken"] = refreshToken }
-        oauth["expiresAt"] = (Date().timeIntervalSince1970 + expiresIn) * 1000
-        if let scope = response["scope"] as? String { oauth["scopes"] = scope.split(separator: " ").map(String.init) }
-        document["claudeAiOauth"] = oauth
-        return document
     }
 
     static func issue(for status: Int) -> UsageIssue {

@@ -7,13 +7,11 @@ and `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
 to request that account's usage limits and reset expiry dates. The account ID is
 sent in the `ChatGPT-Account-Id` header to those same endpoints. It does not refresh Codex credentials.
 
-When the live request fails, it opens `logs_2.sqlite` in the same Codex
-directory read-only and reads the most recent compatible rate-limit event.
-It keeps the last successful snapshot in memory while running.
+When a usage request fails, Uso clears the displayed usage and asks you to
+log in again. It does not read Codex logs or show previous usage as a fallback.
 
 Uso has no analytics, advertising, crash reporting, or developer-operated
-server. It does not display or log credentials. Renewed Claude credentials are saved
-back to the source store as described below. HTTP
+server. It does not display, log, renew, or modify credentials. HTTP
 requests use an ephemeral session without a persistent response cache.
 No credentials or Codex history are bundled in the distributed app.
 
@@ -25,9 +23,7 @@ For Claude, Uso reads the existing Claude Code OAuth access token from the
 `~/.claude/.credentials.json`, selecting the valid credential document with the
 latest expiry when both are present. It sends that token only to
 `https://api.anthropic.com/api/oauth/usage` to read subscription usage.
-When a token expires, Uso sends the existing refresh token only to
-`https://platform.claude.com/v1/oauth/token`. It saves the renewed tokens
-back to the same Keychain entry or credential file, preserving other fields.
-Tokens travel to the system Keychain helper over stdin, not process arguments.
-Anthropic processes these requests under its own policies. Ring visibility choices are saved locally
-in UserDefaults.
+When a token expires, Uso asks you to sign in through Claude Code again.
+It does not send refresh tokens, renew tokens, or write to Claude Code's Keychain
+entry or credential file. Anthropic processes usage requests under its own policies.
+Ring visibility choices are saved locally in UserDefaults.

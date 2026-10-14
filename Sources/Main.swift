@@ -30,8 +30,8 @@ enum UsoMain {
     private static func renderPreview(path: URL, codexHome: URL) -> Bool {
         let result = UsageClient(codexHome: codexHome).load()
         let claude = ClaudeUsageClient().load()
-        let codexPresentation = UsagePresentation(snapshot: result.snapshot, issue: result.issue, isRefreshing: false)
-        let claudePresentation = UsagePresentation(snapshot: claude.snapshot, issue: claude.issue, isRefreshing: false)
+        let codexPresentation = UsageSnapshotPolicy.resolve(result: result)
+        let claudePresentation = UsageSnapshotPolicy.resolve(result: claude)
         let rings = RingSettings().visible(codex: codexPresentation, claude: claudePresentation)
         let limits = rings.map { $0.limits(codex: codexPresentation, claude: claudePresentation) }
         do {

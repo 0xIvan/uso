@@ -8,7 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RingSettings()
     private lazy var settingsController = SettingsWindowController(settings: settings)
     private var claudePresentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
-    private var lastClaudeSnapshot: UsageSnapshot?
     private var lastClaudeRefresh = Date.distantPast
     private let workerQueue = DispatchQueue(label: "local.codex.usage-rings.refresh", qos: .utility)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -18,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTimer: Timer?
     private var appearanceObservation: NSKeyValueObservation?
     private var presentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
-    private var lastValidSnapshot: UsageSnapshot?
 
     init(codexHome: URL, showsSettings: Bool = false) {
         self.showsSettings = showsSettings
@@ -33,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMenu()
         if showsSettings { settingsController.present() }
         refresh()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.refresh()
         }
     }
@@ -114,9 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let claudeResult = self.claudeClient.load()
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    let resolution = UsageSnapshotPolicy.resolve(result: claudeResult, lastValidSnapshot: self.lastClaudeSnapshot)
-                    self.lastClaudeSnapshot = resolution.lastValidSnapshot
-                    self.claudePresentation = resolution.presentation
+                    self.claudePresentation = UsageSnapshotPolicy.resolve(result: claudeResult)
                     self.updateInterface()
                 }
             }
@@ -124,12 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func apply(_ result: UsageLoadResult) {
-        let resolution = UsageSnapshotPolicy.resolve(
-            result: result,
-            lastValidSnapshot: lastValidSnapshot
-        )
-        lastValidSnapshot = resolution.lastValidSnapshot
-        presentation = resolution.presentation
+        presentation = UsageSnapshotPolicy.resolve(result: result)
         updateInterface()
     }
 
@@ -149,12 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for ring in settings.visible(codex: presentation, claude: claudePresentation) {
             let limits = ring.limits(codex: presentation, claude: claudePresentation)
             for (name, bucket) in [("5h", limits.fiveHour), ("Weekly", limits.weekly)] {
-                if let bucket {
-                    let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : (UsagePaceCalculator.calculate(bucket: bucket).map(UsageFormatting.paceStatus) ?? "Pace unavailable")
-                    lines.append("\(ring.title) \(name): \(UsageFormatting.percent(bucket.remainingPercent)) remaining · \(pace)")
-                } else {
-                    lines.append("\(ring.title) \(name): unavailable")
-                }
+                guard let bucket else { continue }
+                let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : (UsagePaceCalculator.calculate(bucket: bucket).map(UsageFormatting.paceStatus) ?? "Pace unavailable")
+                lines.append("\(ring.title) \(name): \(UsageFormatting.percent(bucket.remainingPercent)) remaining · \(pace)")
             }
         }
 

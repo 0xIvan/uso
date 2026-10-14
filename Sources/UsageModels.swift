@@ -111,7 +111,6 @@ enum UsageIssue: Error, Equatable {
     case notSignedIn
     case signInExpired
     case rateLimited
-    case credentialUpdateFailed
     case noData
     case unavailable
     case offlineCached
@@ -122,8 +121,6 @@ enum UsageIssue: Error, Equatable {
             return "Claude sign-in expired — run claude auth login"
         case .rateLimited:
             return "Claude rate limited — retrying in 5 minutes"
-        case .credentialUpdateFailed:
-            return "Could not save renewed Claude credentials"
         case .notSignedIn:
             return "Not signed in"
         case .noData:
@@ -154,70 +151,13 @@ struct UsagePresentation {
     }
 }
 
-struct UsageSnapshotResolution {
-    var presentation: UsagePresentation
-    var lastValidSnapshot: UsageSnapshot?
-}
-
 enum UsageSnapshotPolicy {
-    static func resolve(
-        result: UsageLoadResult,
-        lastValidSnapshot: UsageSnapshot?
-    ) -> UsageSnapshotResolution {
-        if let candidate = result.snapshot, candidate.hasAnyData {
-            if candidate.source == .live {
-                return UsageSnapshotResolution(
-                    presentation: UsagePresentation(
-                        snapshot: candidate,
-                        issue: result.issue,
-                        isRefreshing: false
-                    ),
-                    lastValidSnapshot: candidate
-                )
-            }
-
-            if var previous = lastValidSnapshot, previous.hasAnyData {
-                previous.source = .cached
-                return UsageSnapshotResolution(
-                    presentation: UsagePresentation(
-                        snapshot: previous,
-                        issue: result.issue ?? .offlineCached,
-                        isRefreshing: false
-                    ),
-                    lastValidSnapshot: lastValidSnapshot
-                )
-            }
-
-            return UsageSnapshotResolution(
-                presentation: UsagePresentation(
-                    snapshot: candidate,
-                    issue: result.issue,
-                    isRefreshing: false
-                ),
-                lastValidSnapshot: candidate
-            )
+    static func resolve(result: UsageLoadResult) -> UsagePresentation {
+        guard let snapshot = result.snapshot, snapshot.source == .live,
+              snapshot.hasAnyData, result.issue == nil else {
+            return UsagePresentation(snapshot: nil, issue: result.issue ?? .unavailable, isRefreshing: false)
         }
-
-        if var previous = lastValidSnapshot, previous.hasAnyData {
-            previous.source = .cached
-            return UsageSnapshotResolution(
-                presentation: UsagePresentation(
-                    snapshot: previous,
-                    issue: result.issue ?? .offlineCached,
-                    isRefreshing: false
-                ),
-                lastValidSnapshot: lastValidSnapshot
-            )
-        }
-
-        return UsageSnapshotResolution(
-            presentation: UsagePresentation(
-                snapshot: result.snapshot,
-                issue: result.issue,
-                isRefreshing: false
-            ),
-            lastValidSnapshot: nil
-        )
+        return UsagePresentation(snapshot: snapshot, issue: nil, isRefreshing: false)
     }
 }
 
@@ -268,8 +208,7 @@ enum UsageFormatting {
             return "Reset date unavailable"
         }
         let formatter = DateFormatter()
-        formatter.timeStyle = .none
-        formatter.dateStyle = .medium
+        formatter.setLocalizedDateFormatFromTemplate("dMMMjm")
         return "Resets \(formatter.string(from: date))"
     }
 

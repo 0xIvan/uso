@@ -50,6 +50,7 @@ fi
 ln -s /Applications "${PAYLOAD}/Applications"
 cp "${ROOT_DIR}/docs/installation.txt" "${PAYLOAD}/Installation.txt"
 cp "${ROOT_DIR}/docs/privacy.md" "${PAYLOAD}/Privacy.md"
+cp "${ROOT_DIR}/LICENSE" "${PAYLOAD}/License.txt"
 DMG_PATH="${STAGING}/${BASENAME}.dmg"
 hdiutil create -volname "Uso" -srcfolder "${PAYLOAD}" -format UDZO -ov "${DMG_PATH}"
 if [[ "${MODE}" == "--release" ]]; then

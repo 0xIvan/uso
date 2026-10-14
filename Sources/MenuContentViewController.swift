@@ -58,7 +58,7 @@ final class MenuContentViewController: NSViewController {
             if let snapshot = presentation.snapshot, snapshot.hasAnyData {
                 addSnapshot(snapshot, to: content)
             } else {
-                content.addArrangedSubview(emptyStateView())
+                content.addArrangedSubview(emptyStateView(for: .codex, presentation: presentation))
             }
         }
 
@@ -73,9 +73,8 @@ final class MenuContentViewController: NSViewController {
                 if let bucket = snapshot.baseLimits.fiveHour { rows.append(limitRow(role: .fiveHour, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
                 if let bucket = snapshot.baseLimits.weekly { rows.append(limitRow(role: .weekly, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
                 if !rows.isEmpty { content.addArrangedSubview(card(containing: rows)) }
-                content.addArrangedSubview(messageLabel("\(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))"))
             } else {
-                content.addArrangedSubview(messageLabel(claudePresentation.isRefreshing ? "Checking Claude usage…" : claudePresentation.issue?.title ?? "No Claude usage data"))
+                content.addArrangedSubview(emptyStateView(for: .claude, presentation: claudePresentation))
             }
         }
 
@@ -309,23 +308,25 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
-    private func emptyStateView() -> NSView {
+    private func emptyStateView(for provider: UsageRing, presentation: UsagePresentation) -> NSView {
         let titleText: String
         let detailText: String
         if presentation.isRefreshing {
             titleText = "Loading usage…"
-            detailText = "Checking Codex usage and local cached data."
+            detailText = "Checking \(provider.title) usage."
         } else {
             switch presentation.issue {
             case .notSignedIn:
                 titleText = "Not signed in"
-                detailText = "Sign in to Codex to make usage available."
+                detailText = "Sign in to \(provider.title) to make usage available."
             case .noData:
                 titleText = "No usage data"
-                detailText = "Codex did not report any recognized limits."
-            case .unavailable, .offlineCached, .signInExpired, .rateLimited, .credentialUpdateFailed:
-                titleText = "Usage unavailable"
-                detailText = "The live endpoint and local cache could not provide data."
+                detailText = "\(provider.title) did not report any recognized limits."
+            case .unavailable, .offlineCached, .signInExpired, .rateLimited:
+                titleText = "Log in again"
+                detailText = provider == .codex
+                    ? "Could not fetch Codex usage. Sign in to Codex, then refresh."
+                    : "Could not fetch Claude usage. Run claude auth login, then refresh."
             case nil:
                 titleText = "No usage data"
                 detailText = "Refresh to check again."
@@ -333,7 +334,7 @@ final class MenuContentViewController: NSViewController {
         }
         let title = label(titleText, size: 13, weight: .semibold, color: .labelColor)
         let detail = label(detailText, size: 11, weight: .regular, color: .secondaryLabelColor)
-        detail.maximumNumberOfLines = 2
+        detail.maximumNumberOfLines = 3
         let stack = NSStackView(views: [title, detail])
         stack.orientation = .vertical
         stack.alignment = .leading

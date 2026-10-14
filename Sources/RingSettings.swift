@@ -73,7 +73,7 @@ final class SettingsWindowController: NSWindowController {
             button.state = settings.enabled.contains(ring) ? .on : .off
             stack.addArrangedSubview(button)
         }
-        let detail = NSTextField(wrappingLabelWithString: "Weekly outside · 5-hour inside\n\nGreen: on pace\nYellow: up to 5 percentage points over pace\nRed: more than 5 points over pace or exhausted\nGray: pace or usage unavailable")
+        let detail = NSTextField(wrappingLabelWithString: "Weekly outside · 5-hour inside\nOnly reported usage limits appear\n\nGreen: on pace\nYellow: up to 5 percentage points over pace\nRed: more than 5 points over pace or exhausted\nGray: pace unavailable")
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(detail)

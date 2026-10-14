@@ -6,8 +6,9 @@ enum SelfCheck {
         let checks: [(String, () -> Bool)] = [
             ("signed-out providers are hidden while unavailable sign-ins remain visible", checkProviderVisibility),
             ("Claude idle five-hour windows show their normal not-started state", checkClaudeIdleWindow),
-            ("Claude token renewal preserves credentials and classifies failures", checkClaudeRenewal),
             ("nested rings put weekly outside and five-hour inside", checkNestedRings),
+            ("missing usage windows draw no ring while zero-use limits remain visible", checkMissingRings),
+            ("exhausted providers show a red exclamation instead of rings", checkExhaustedRendering),
             ("Claude windows, ISO timestamps, null and malformed data", checkClaudeDecoding),
             ("ring selection persists and allows all rings off", checkRingSelection),
             ("side-by-side ring dimensions and unavailable fallback", checkRingLayout),
@@ -30,8 +31,7 @@ enum SelfCheck {
             ("invalid usage pace window is unavailable", checkInvalidUsagePaceWindow),
             ("menu hides only Codex 5.3 Spark", checkMenuLimitFilter),
             ("menu semantic ring roles", checkSemanticRingRoles),
-            ("cached refresh retains prior live values", checkCachedRefreshRetainsLive),
-            ("initial cached snapshot is accepted", checkInitialCachedSnapshot),
+            ("failed fetches hide usage and request login for both providers", checkFailedFetchPresentation),
             ("successful live snapshot replaces prior values", checkLiveSnapshotReplacement),
         ]
 
@@ -92,22 +92,6 @@ enum SelfCheck {
         return !absentLabels.contains("Codex") && !absentLabels.contains("Claude")
     }
 
-    private static func checkClaudeRenewal() -> Bool {
-        let original: [String: Any] = ["otherCredential": "preserved", "claudeAiOauth": ["accessToken": "old", "refreshToken": "original-refresh", "subscriptionType": "max"]]
-        let document = ClaudeUsageClient.renewedDocument(original, response: ["refresh_token": "rotated", "scope": "user:profile user:inference"], token: "new", expiresIn: 3600)
-        let oauth = document["claudeAiOauth"] as? [String: Any]
-        let fallback = ClaudeUsageClient.renewedDocument(original, response: [:], token: "new", expiresIn: 3600)["claudeAiOauth"] as? [String: Any]
-        return document["otherCredential"] as? String == "preserved"
-            && oauth?["refreshToken"] as? String == "rotated"
-            && oauth?["accessToken"] as? String == "new"
-            && oauth?["subscriptionType"] as? String == "max"
-            && (oauth?["expiresAt"] as? Double ?? 0) > Date().timeIntervalSince1970 * 1000
-            && fallback?["refreshToken"] as? String == "original-refresh"
-            && ClaudeUsageClient.issue(for: 401) == .signInExpired
-            && ClaudeUsageClient.issue(for: 429) == .rateLimited
-            && ClaudeUsageClient.issue(for: 500) == .unavailable
-    }
-
     private static func checkNestedRings() -> Bool {
         let now = Date().timeIntervalSince1970
         let weekly = LimitBucket(usedPercent: 30, windowMinutes: 10_080, resetAt: now + 604_800 * 0.9)
@@ -119,6 +103,61 @@ enum SelfCheck {
               let outer = bitmap.colorAt(x: 22, y: 5)?.usingColorSpace(.deviceRGB),
               let inner = bitmap.colorAt(x: 22, y: 13)?.usingColorSpace(.deviceRGB) else { return false }
         return outer.redComponent > outer.greenComponent && inner.greenComponent > inner.redComponent
+    }
+
+    private static func checkMissingRings() -> Bool {
+        let weeklyData = Data(#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":30,"limit_window_seconds":604800},"secondary_window":null}}"#.utf8)
+        guard let weeklyOnly = UsageDecoder.liveSnapshot(from: weeklyData),
+              weeklyOnly.baseLimits.weekly != nil,
+              weeklyOnly.baseLimits.fiveHour == nil else { return false }
+        let idle = LimitBucket(usedPercent: 0, windowMinutes: 300, resetAt: nil)
+        let limits = [
+            weeklyOnly.baseLimits,
+            BaseLimits(fiveHour: idle),
+            BaseLimits(),
+        ]
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("uso-missing-ring-check-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: path) }
+        guard (try? RingRenderer.writePreview(limits: limits, to: path)) != nil,
+              let data = try? Data(contentsOf: path),
+              let bitmap = NSBitmapImageRep(data: data) else { return false }
+        for (index, visible) in [(true, false), (false, true), (false, false)].enumerated() {
+            guard let outer = bitmap.colorAt(x: 22 + index * 48, y: 5),
+                  let inner = bitmap.colorAt(x: 22 + index * 48, y: 13),
+                  (outer.alphaComponent > 0) == visible.0,
+                  (inner.alphaComponent > 0) == visible.1 else { return false }
+        }
+        return true
+    }
+
+    private static func checkExhaustedRendering() -> Bool {
+        let available = LimitBucket(usedPercent: 99.9, windowMinutes: 300, resetAt: nil)
+        let exhausted = LimitBucket(usedPercent: 100, windowMinutes: 10_080, resetAt: nil)
+        let overLimit = LimitBucket(usedPercent: 120, windowMinutes: 10_080, resetAt: nil)
+        let limits = [
+            BaseLimits(fiveHour: available, weekly: exhausted),
+            BaseLimits(weekly: exhausted),
+            BaseLimits(weekly: overLimit),
+            BaseLimits(fiveHour: exhausted),
+            BaseLimits(fiveHour: available, weekly: available),
+        ]
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("uso-exhausted-check-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: path) }
+        guard (try? RingRenderer.writePreview(limits: limits, to: path)) != nil,
+              let data = try? Data(contentsOf: path),
+              let bitmap = NSBitmapImageRep(data: data) else { return false }
+        for index in 0..<4 {
+            let centerX = 22 + index * 48
+            guard let stem = bitmap.colorAt(x: centerX, y: 16)?.usingColorSpace(.deviceRGB),
+                  let dot = bitmap.colorAt(x: centerX, y: 31)?.usingColorSpace(.deviceRGB),
+                  stem.alphaComponent > 0.9, dot.alphaComponent > 0.9,
+                  stem.redComponent > stem.greenComponent * 2,
+                  dot.redComponent > dot.greenComponent * 2,
+                  bitmap.colorAt(x: centerX - 17, y: 22)?.alphaComponent == 0,
+                  bitmap.colorAt(x: centerX - 9, y: 22)?.alphaComponent == 0 else { return false }
+        }
+        return bitmap.colorAt(x: 22 + 4 * 48, y: 16)?.alphaComponent == 0
+            && (bitmap.colorAt(x: 5 + 4 * 48, y: 22)?.alphaComponent ?? 0) > 0
     }
 
     private static func checkClaudeDecoding() -> Bool {
@@ -388,53 +427,45 @@ enum SelfCheck {
             && UsageRing.claude.limits(codex: first, claude: second) == claude.baseLimits
     }
 
-    private static func checkCachedRefreshRetainsLive() -> Bool {
-        var live = snapshot(source: .live, usedPercent: 20)
-        live.availableResetCount = 2
-        live.availableResets = [AvailableReset(expiresAt: Date(timeIntervalSince1970: 2_000_000_000))]
-        let diskCached = snapshot(source: .cached, usedPercent: 80)
-        let resolution = UsageSnapshotPolicy.resolve(
-            result: UsageLoadResult(snapshot: diskCached, issue: nil),
-            lastValidSnapshot: live
-        )
-        let explicitIssueResolution = UsageSnapshotPolicy.resolve(
-            result: UsageLoadResult(snapshot: diskCached, issue: .notSignedIn),
-            lastValidSnapshot: live
-        )
-        return resolution.presentation.snapshot?.baseLimits.weekly?.usedPercent == 20
-            && resolution.presentation.snapshot?.availableResetCount == 2
-            && resolution.presentation.snapshot?.availableResets == live.availableResets
-            && resolution.presentation.snapshot?.source == .cached
-            && resolution.presentation.snapshot?.updatedAt == live.updatedAt
-            && resolution.presentation.issue == .offlineCached
-            && resolution.lastValidSnapshot == live
-            && explicitIssueResolution.presentation.snapshot?.baseLimits.weekly?.usedPercent == 20
-            && explicitIssueResolution.presentation.issue == .notSignedIn
-    }
-
-    private static func checkInitialCachedSnapshot() -> Bool {
-        let diskCached = snapshot(source: .cached, usedPercent: 35)
-        let resolution = UsageSnapshotPolicy.resolve(
-            result: UsageLoadResult(snapshot: diskCached, issue: .notSignedIn),
-            lastValidSnapshot: nil
-        )
-        return resolution.presentation.snapshot == diskCached
-            && resolution.presentation.issue == .notSignedIn
-            && resolution.lastValidSnapshot == diskCached
+    private static func checkFailedFetchPresentation() -> Bool {
+        _ = NSApplication.shared
+        let controller = MenuContentViewController()
+        _ = controller.view
+        func labels(in view: NSView) -> [String] {
+            (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap { labels(in: $0) }
+        }
+        let live = UsageSnapshotPolicy.resolve(result: UsageLoadResult(snapshot: snapshot(source: .live, usedPercent: 20), issue: nil))
+        controller.update(live, claude: live)
+        let failures: [UsageLoadResult] = [
+            UsageLoadResult(snapshot: nil, issue: .unavailable),
+            UsageLoadResult(snapshot: nil, issue: .signInExpired),
+            UsageLoadResult(snapshot: nil, issue: .rateLimited),
+            UsageLoadResult(snapshot: snapshot(source: .cached, usedPercent: 80), issue: .offlineCached),
+        ]
+        for failure in failures {
+            let presentation = UsageSnapshotPolicy.resolve(result: failure)
+            guard presentation.snapshot == nil, presentation.hasSignIn, !presentation.isRefreshing else { return false }
+            controller.update(presentation, claude: presentation)
+            let text = labels(in: controller.view)
+            guard text.filter({ $0 == "Log in again" }).count == 2,
+                  text.contains("Could not fetch Codex usage. Sign in to Codex, then refresh."),
+                  text.contains("Could not fetch Claude usage. Run claude auth login, then refresh."),
+                  !text.contains(where: { $0.contains("%") || $0.contains("Updated ") }) else { return false }
+            for provider in UsageRing.allCases {
+                let limits = provider.limits(codex: presentation, claude: presentation)
+                guard limits.fiveHour == nil, limits.weekly == nil else { return false }
+            }
+        }
+        return true
     }
 
     private static func checkLiveSnapshotReplacement() -> Bool {
-        var previous = snapshot(source: .live, usedPercent: 45)
-        previous.availableResetCount = 2
         var current = snapshot(source: .live, usedPercent: 15)
         current.availableResetCount = 0
-        let resolution = UsageSnapshotPolicy.resolve(
-            result: UsageLoadResult(snapshot: current, issue: nil),
-            lastValidSnapshot: previous
+        let presentation = UsageSnapshotPolicy.resolve(
+            result: UsageLoadResult(snapshot: current, issue: nil)
         )
-        return resolution.presentation.snapshot == current
-            && resolution.presentation.issue == nil
-            && resolution.lastValidSnapshot == current
+        return presentation.snapshot == current && presentation.issue == nil
     }
 
     private static func snapshot(source: UsageSource, usedPercent: Double) -> UsageSnapshot {

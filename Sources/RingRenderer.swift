@@ -25,21 +25,38 @@ enum RingRenderer {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         let scale = min(bounds.width, bounds.height) / 22
+        if limits.hasExhaustedLimit {
+            drawExclamation(center: center, scale: scale, context: context)
+            return
+        }
         context.saveGState()
         context.setLineWidth(2.5 * scale)
         for (bucket, radius) in [(limits.weekly, 8.5 * scale), (limits.fiveHour, 4.5 * scale)] {
-            let trackColor: NSColor
-            if let bucket, bucket.remainingPercent <= 0 {
-                trackColor = PacePalette.color(for: bucket)
-            } else {
-                trackColor = NSColor.secondaryLabelColor.withAlphaComponent(0.25)
-            }
+            guard let bucket else { continue }
+            let trackColor = NSColor.secondaryLabelColor.withAlphaComponent(0.25)
             context.setStrokeColor(trackColor.cgColor)
             context.strokeEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
-            if let bucket {
-                drawArc(bucket: bucket, center: center, radius: radius, lineWidth: 2.5 * scale, context: context)
-            }
+            drawArc(bucket: bucket, center: center, radius: radius, lineWidth: 2.5 * scale, context: context)
         }
+        context.restoreGState()
+    }
+
+    private static func drawExclamation(center: CGPoint, scale: CGFloat, context: CGContext) {
+        let color = RingPalette.color(forRemaining: 0)
+        context.saveGState()
+        context.setLineCap(.round)
+        context.setLineWidth(2.8 * scale)
+        context.setStrokeColor(color.cgColor)
+        context.move(to: CGPoint(x: center.x, y: center.y + 5.5 * scale))
+        context.addLine(to: CGPoint(x: center.x, y: center.y - 0.5 * scale))
+        context.strokePath()
+        context.setFillColor(color.cgColor)
+        context.fillEllipse(in: CGRect(
+            x: center.x - 1.5 * scale,
+            y: center.y - 6.0 * scale,
+            width: 3.0 * scale,
+            height: 3.0 * scale
+        ))
         context.restoreGState()
     }
 
