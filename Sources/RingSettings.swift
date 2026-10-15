@@ -91,6 +91,8 @@ final class SettingsWindowController: NSWindowController {
                 stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
                 stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
             ])
+            content.layoutSubtreeIfNeeded()
+            window.setContentSize(NSSize(width: 400, height: ceil(stack.fittingSize.height) + 48))
         }
         window.center()
     }

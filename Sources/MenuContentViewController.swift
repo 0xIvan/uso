@@ -340,8 +340,11 @@ final class MenuContentViewController: NSViewController {
             }
         }
         let title = label(titleText, size: 13, weight: .semibold, color: .labelColor)
-        let detail = label(detailText, size: 11, weight: .regular, color: .secondaryLabelColor)
-        detail.maximumNumberOfLines = 3
+        let detail = NSTextField(wrappingLabelWithString: detailText)
+        detail.font = .systemFont(ofSize: 11)
+        detail.textColor = .secondaryLabelColor
+        detail.widthAnchor.constraint(equalToConstant: contentWidth - cardInset * 2).isActive = true
+        detail.setContentCompressionResistancePriority(.required, for: .vertical)
         let stack = NSStackView(views: [title, detail])
         stack.orientation = .vertical
         stack.alignment = .leading
