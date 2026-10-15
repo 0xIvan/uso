@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let menuItem = NSMenuItem()
     private let menuController = MenuContentViewController()
     private var refreshTimer: Timer?
+    private var wakeObservation: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
     private let updaterController = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
     private var updaterObservation: NSKeyValueObservation?
@@ -40,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updaterController.startUpdater()
         if showsSettings { settingsController.present() }
+        wakeObservation = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.refresh(forceClaude: true)
+        }
         refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -48,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         refreshTimer?.invalidate()
+        if let wakeObservation { NSWorkspace.shared.notificationCenter.removeObserver(wakeObservation) }
         appearanceObservation?.invalidate()
         updaterObservation?.invalidate()
     }

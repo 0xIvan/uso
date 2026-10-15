@@ -11,21 +11,24 @@ When a usage request fails, Uso clears the displayed usage and asks you to
 log in again. It does not read Codex logs or show previous usage as a fallback.
 
 Uso has no analytics, advertising, crash reporting, or developer-operated
-server. It does not display, log, renew, or modify credentials. HTTP
+server. It does not display or log credentials. Codex credentials are never modified. HTTP
 requests use an ephemeral session without a persistent response cache.
 No credentials or Codex history are bundled in the distributed app.
 
 OpenAI processes the authenticated usage request under its own policies.
 Uso is independent software, not affiliated with or endorsed by OpenAI.
 
-For Claude, Uso reads the existing Claude Code OAuth access token from the
-`Claude Code-credentials` macOS Keychain entry or
-`~/.claude/.credentials.json`, selecting the valid credential document with the
-latest expiry when both are present. It sends that token only to
-`https://api.anthropic.com/api/oauth/usage` to read subscription usage.
-When a token expires, Uso asks you to sign in through Claude Code again.
-It does not send refresh tokens, renew tokens, or write to Claude Code's Keychain
-entry or credential file. Anthropic processes usage requests under its own policies.
+For Claude, Uso reads the existing Claude Code OAuth access and refresh tokens
+from the `Claude Code-credentials` macOS Keychain entry, or from
+`~/.claude/.credentials.json` when there is no Keychain entry. An inaccessible
+Keychain is treated as temporarily unavailable rather than using a stale file.
+It sends the access token to `https://api.anthropic.com/api/oauth/usage` to read
+subscription usage. When renewal is needed, it sends the refresh token to
+`https://platform.claude.com/v1/oauth/token` and saves returned tokens into the
+same credential store. It coordinates with Claude Code's refresh and storage
+write locks, preserves unrelated fields, and checks for a newer login or logout
+before saving. It does not perform inference requests. Anthropic processes these
+requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
 
 When you choose Check for Updates…, Sparkle requests the signed update feed and,

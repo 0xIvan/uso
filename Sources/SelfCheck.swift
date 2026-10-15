@@ -31,7 +31,7 @@ enum SelfCheck {
             ("invalid usage pace window is unavailable", checkInvalidUsagePaceWindow),
             ("menu hides only Codex 5.3 Spark", checkMenuLimitFilter),
             ("menu semantic ring roles", checkSemanticRingRoles),
-            ("failed fetches hide usage and request login for both providers", checkFailedFetchPresentation),
+            ("failed fetches hide usage and distinguish Claude retry from expired login", checkFailedFetchPresentation),
             ("successful live snapshot replaces prior values", checkLiveSnapshotReplacement),
         ]
 
@@ -447,9 +447,10 @@ enum SelfCheck {
             guard presentation.snapshot == nil, presentation.hasSignIn, !presentation.isRefreshing else { return false }
             controller.update(presentation, claude: presentation)
             let text = labels(in: controller.view)
-            guard text.filter({ $0 == "Log in again" }).count == 2,
+            let claudeNeedsLogin = failure.issue == .signInExpired
+            guard text.filter({ $0 == "Log in again" }).count == (claudeNeedsLogin ? 2 : 1),
                   text.contains("Could not fetch Codex usage. Sign in to Codex, then refresh."),
-                  text.contains("Could not fetch Claude usage. Run claude auth login, then refresh."),
+                  text.contains(claudeNeedsLogin ? "Could not fetch Claude usage. Run claude auth login, then refresh." : "Usage temporarily unavailable"),
                   !text.contains(where: { $0.contains("%") || $0.contains("Updated ") }) else { return false }
             for provider in UsageRing.allCases {
                 let limits = provider.limits(codex: presentation, claude: presentation)

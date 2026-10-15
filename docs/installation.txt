@@ -8,8 +8,8 @@ macOS 13 or newer, on Apple Silicon or Intel.
 A local Codex sign-in with a ChatGPT account and readable credentials in
 ~/.codex/auth.json. API-key-only sign-in and Keychain-only credentials are
 not supported for Codex. Claude requires a Claude Code subscription sign-in.
-Uso reads credentials without modifying them. Renew expired sign-ins through
-Codex or Claude Code, then refresh Uso.
+Uso reads Codex credentials without modifying them. Claude access tokens renew
+automatically through the shared Claude Code login; renewal updates that store.
 
 INSTALL
 1. Open the DMG and drag Uso into Applications.
@@ -55,11 +55,13 @@ The upstream usage endpoints can change and interrupt Uso.
 A custom CODEX_HOME set only in your shell is not inherited by Finder;
 normal installation expects ~/.codex.
 
-If Claude sign-in has expired, run claude auth login, then click Refresh.
+Uso automatically renews expired Claude access tokens and refreshes after wake.
+If renewal credentials are rejected, run claude auth login, then click Refresh.
+Temporary network or lock contention errors retry automatically.
 Rate-limited Claude requests retry after five minutes.
 
 CLAUDE INTEGRATION STATUS
-Claude monitoring is experimental and read-only. Permission for this usage-only
+Claude monitoring is experimental; automatic renewal updates shared credentials. Permission for this usage-only
 integration under Anthropic's rules for subscription credentials has not been
 established. Read-only credential access does not resolve that policy question.
 Provider changes may interrupt Claude support. See:

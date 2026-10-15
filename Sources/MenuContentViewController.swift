@@ -322,6 +322,13 @@ final class MenuContentViewController: NSViewController {
             case .noData:
                 titleText = "No usage data"
                 detailText = "\(provider.title) did not report any recognized limits."
+            case .unavailable where provider == .claude,
+                 .offlineCached where provider == .claude,
+                 .rateLimited where provider == .claude:
+                titleText = "Usage temporarily unavailable"
+                detailText = presentation.issue == .rateLimited
+                    ? "Claude rate limited the request. Uso will retry in five minutes."
+                    : "Uso will retry automatically. You can also click Refresh."
             case .unavailable, .offlineCached, .signInExpired, .rateLimited:
                 titleText = "Log in again"
                 detailText = provider == .codex

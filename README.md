@@ -59,16 +59,19 @@ When resets may be available, Uso also reads `/backend-api/wham/rate-limit-reset
 
 `UsageDecoder.swift` maps durations to five-hour and weekly buckets. `RingRenderer.swift` shares artwork between the menu bar and preview. `AppDelegate.swift` performs requests off the main thread and updates AppKit on the main thread.
 
-Claude usage is read from `https://api.anthropic.com/api/oauth/usage` using the existing Claude Code OAuth access token. Claude refreshes every five minutes or when Refresh is clicked. Failed requests clear the displayed usage and show “Log in again” with the Claude login command. Uso never renews tokens or modifies Claude Code credentials. When the token expires, sign in through Claude Code and refresh Uso. Tokens are never logged. Rate-limited requests wait five minutes before retrying. Both usage endpoints are upstream interfaces that may change. The stable `local.codex.usage-rings` bundle and launch-agent identifier is retained for installation continuity.
+Claude usage is read from `https://api.anthropic.com/api/oauth/usage` using the existing Claude Code OAuth access token. Claude refreshes every five minutes, when Refresh is clicked, and after the Mac wakes. Expiring or rejected access tokens are renewed automatically using the existing refresh token at `https://platform.claude.com/v1/oauth/token`. Uso coordinates through Claude Code's refresh and credential-write directory locks, re-reads credentials under the locks, and preserves a newer login or logout instead of overwriting it. Only the active credential store is updated; Keychain takes precedence over the legacy file. Codex credentials remain read-only. Tokens are never logged. Temporary network, lock contention, and rate-limit failures retry without instructing you to log in again; rejected refresh credentials require `claude auth login`. Rate-limited requests wait five minutes before retrying. These upstream interfaces may change.
 
 ## Claude integration status
 
-Claude monitoring is read-only and uses an upstream usage endpoint with an existing
-Claude Code sign-in. Anthropic's [authentication and credential-use guidance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)
+Claude usage monitoring does not perform inference. Token renewal updates Claude
+Code's shared login credentials. The lock protocol was checked against Claude
+Code 2.1.296; it is an internal interface and future versions may change it.
+Uso never steals an existing lock. After an unclean exit, Claude Code may need
+to run to recover a stale lock before Uso can resume renewal.
+Anthropic's [authentication and credential-use guidance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)
 restricts third-party use of subscription credentials. Permission for Uso's usage-only
-integration has not been established. Keeping credentials read-only prevents Uso
-from overwriting a Claude Code login; it does not resolve that policy question.
-Claude support is experimental and can stop working if the provider changes access.
+integration has not been established. Claude support is experimental and can stop
+working if the provider changes access.
 
 ## Support
 
