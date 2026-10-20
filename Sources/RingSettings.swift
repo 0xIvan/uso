@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 
 enum UsageRing: String, CaseIterable {
     case codex, claude
@@ -48,8 +49,9 @@ final class RingSettings {
     }
 }
 
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let settings: RingSettings
+    private let loginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let updateButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
     var onChange: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -61,6 +63,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = "Uso Settings"
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        window.delegate = self
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -79,6 +82,10 @@ final class SettingsWindowController: NSWindowController {
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(detail)
+        loginButton.target = self
+        loginButton.action = #selector(toggleStartAtLogin(_:))
+        stack.addArrangedSubview(loginButton)
+        updateLoginStatus()
         updateButton.target = self
         updateButton.action = #selector(checkForUpdatesPressed)
         updateButton.bezelStyle = .rounded
@@ -100,6 +107,7 @@ final class SettingsWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
     func present() {
+        updateLoginStatus()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -110,6 +118,66 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func checkForUpdatesPressed() { onCheckForUpdates?() }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        updateLoginStatus()
+    }
+
+    private func updateLoginStatus() {
+        if legacyLoginItem != nil {
+            loginButton.state = .on
+            loginButton.toolTip = "Uso opens automatically when you sign in."
+            return
+        }
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            loginButton.state = .on
+            loginButton.toolTip = "Uso opens automatically when you sign in."
+        case .requiresApproval:
+            loginButton.state = .mixed
+            loginButton.toolTip = "Approval is required in System Settings. Click to open Login Items."
+        default:
+            loginButton.state = .off
+            loginButton.toolTip = "Open Uso automatically when you sign in."
+        }
+    }
+
+    private var legacyLoginItem: URL? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/local.codex.usage-rings.plist")
+        guard let data = try? Data(contentsOf: url),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              plist["Label"] as? String == "local.codex.usage-rings",
+              plist["RunAtLoad"] as? Bool == true,
+              let arguments = plist["ProgramArguments"] as? [String],
+              arguments == ["/Applications/Uso.app/Contents/MacOS/Uso"] else { return nil }
+        return url
+    }
+
+    @objc private func toggleStartAtLogin(_ sender: NSButton) {
+        do {
+            if sender.state == .off {
+                if SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval {
+                    try SMAppService.mainApp.unregister()
+                }
+                // Removing the old installer plist prevents future logins without stopping this running app.
+                if let legacyLoginItem { try FileManager.default.removeItem(at: legacyLoginItem) }
+            } else if SMAppService.mainApp.status == .requiresApproval {
+                SMAppService.openSystemSettingsLoginItems()
+            } else if sender.state == .on {
+                try SMAppService.mainApp.register()
+                if SMAppService.mainApp.status == .requiresApproval {
+                    SMAppService.openSystemSettingsLoginItems()
+                }
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Couldn’t change Start at login"
+            alert.informativeText = error.localizedDescription
+            if let window { alert.beginSheetModal(for: window) }
+        }
+        updateLoginStatus()
+    }
 
     @objc private func toggleRing(_ sender: NSButton) {
         settings.set(UsageRing.allCases[sender.tag], enabled: sender.state == .on)

@@ -14,7 +14,7 @@ Open the DMG, drag **Uso** to **Applications**, eject the image, and open the ap
 
 Requires macOS 13+ on Apple Silicon or Intel, and a local Codex ChatGPT sign-in whose credentials are readable in `~/.codex/auth.json`. Keychain-only and API-key-only authentication are not supported. Uso does not sign in or renew Codex tokens itself. Claude usage requires a Claude Code subscription sign-in stored in the macOS Keychain or `~/.claude/.credentials.json`; API keys do not provide subscription limits.
 
-See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Start at login is optional through macOS Login Items. After installing a Sparkle-enabled build, choose **Check for Updates…** in Uso’s Settings to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
+See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Enable **Start at login** in Uso’s Settings to launch automatically when you sign in. If macOS requires approval, Uso opens Login Items in System Settings. After installing a Sparkle-enabled build, choose **Check for Updates…** in Uso’s Settings to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
 
 ## Build a shareable DMG
 

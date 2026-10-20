@@ -1,6 +1,4 @@
-Restored automatic Claude access-token renewal with shared Claude Code refresh and storage locks, checks that preserve newer logins and logouts, and secure credential persistence. Uso also refreshes after waking from sleep. Temporary Claude failures no longer tell you to log in again.
-
-Codex credentials remain read-only. Claude renewal updates the existing shared login store.
+Added **Start at login** to Uso’s Settings. Enable it to open Uso automatically when you sign in, or disable it to stop automatic startup. The setting reflects macOS login-item status and opens System Settings when approval is required. It also recognizes and can disable the older source installer's startup entry.
 
 Uso is a native macOS menu bar utility showing remaining Codex and Claude subscription usage. Requires macOS 13 or newer; the download includes Apple Silicon and Intel binaries.
 
@@ -17,4 +15,4 @@ The compiled app is free to use; source rights are retained. Installation instru
 
 Report problems at https://github.com/0xIvan/uso/issues. Do not attach credential files, tokens, passwords, or unredacted account details.
 
-Intel and macOS 13 execution have not been tested on physical machines. A clean-Mac installation and live provider/lifecycle checks remain outstanding; this draft is for review before public release.
+Intel and macOS 13 execution have not been tested on physical machines. A clean-Mac installation, launch after signing in, and live provider/lifecycle checks remain outstanding.

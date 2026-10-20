@@ -28,8 +28,9 @@ the displayed usage. Uso does not show cached readings or read Codex logs.
 Claude requires a subscription sign-in through Claude Code.
 
 START AT LOGIN (OPTIONAL)
-In macOS System Settings, search for Login Items. Add Uso from
-Applications to the list of apps that open at login.
+Open Uso’s Settings and enable Start at login. Disable it to stop opening Uso
+automatically when you sign in. If macOS requires approval, Uso opens Login
+Items in System Settings; allow Uso there, then return to Uso’s Settings.
 
 UPDATE
 Open Settings from Uso's menu, then choose Check for Updates…
