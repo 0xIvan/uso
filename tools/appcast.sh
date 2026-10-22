@@ -11,7 +11,7 @@ STAGING="$(mktemp -d "${TMPDIR:-/tmp}/uso-appcast.XXXXXX")"
 trap 'rm -rf "${STAGING}"' EXIT
 cp "${DIST_DIR}/${ARCHIVE}" "${STAGING}/${ARCHIVE}"
 cp "${ROOT_DIR}/docs/release-notes.md" "${STAGING}/${ARCHIVE%.dmg}.md"
-OPTIONS=(--maximum-deltas 0 --embed-release-notes
+OPTIONS=(--maximum-deltas 0 --embed-release-notes -o "${STAGING}/appcast.xml"
   --download-url-prefix "https://github.com/0xIvan/uso/releases/download/v${VERSION}/"
   --link "https://github.com/0xIvan/uso")
 if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
