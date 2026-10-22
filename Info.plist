@@ -13,7 +13,7 @@
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.codex.usage-rings</string>
+	<string>com.ivan.uso</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -37,7 +37,7 @@
 	<key>SUEnableSystemProfiling</key>
 	<false/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/0xIvan/uso/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/0xIvan/uso/releases/latest/download/appcast-com.ivan.uso.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>PnnFakLP7TnfVg1kTZUviKPrWBpLJx1k0aq4dU7V2tU=</string>
 	<key>SURequireSignedFeed</key>

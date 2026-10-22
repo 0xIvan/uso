@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 struct ClaudeCredentials {
     enum Source { case keychain, file }
@@ -79,6 +80,18 @@ final class ClaudeCredentialStore {
         let file = directory.appendingPathComponent(".credentials.json")
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
         return try decode(Data(contentsOf: file), source: .file)
+    }
+
+    func accountIdentifier(for credentials: ClaudeCredentials) -> String {
+        let config = URL(fileURLWithPath: directory.path + ".json")
+        var identity = credentials.accessToken
+        if let data = try? Data(contentsOf: config),
+           let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let account = document["oauthAccount"] as? [String: Any],
+           let accountID = account["accountUuid"] as? String, !accountID.isEmpty {
+            identity = accountID + ":" + (account["organizationUuid"] as? String ?? "")
+        }
+        return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private func decode(_ data: Data, source: ClaudeCredentials.Source) throws -> ClaudeCredentials? {

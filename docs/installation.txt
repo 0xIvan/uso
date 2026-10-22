@@ -28,7 +28,7 @@ the displayed usage. Uso does not show cached readings or read Codex logs.
 Claude requires a subscription sign-in through Claude Code.
 
 START AT LOGIN (OPTIONAL)
-Open Uso’s Settings and enable Start at login. Disable it to stop opening Uso
+Open Uso’s Settings and enable Open at login. Disable it to stop opening Uso
 automatically when you sign in. If macOS requires approval, Uso opens Login
 Items in System Settings; allow Uso there, then return to Uso’s Settings.
 
@@ -40,6 +40,15 @@ Background update checks and unattended installation are disabled.
 Older Uso builds without this button need one manual update: quit Uso, open the
 new DMG, and replace Uso in Applications. You do not need to delete it first.
 Draft and prerelease versions are excluded from in-app updates.
+
+BUNDLE ID TRANSITION
+Uso now uses com.ivan.uso. Older local.codex.usage-rings builds need a manual
+replacement even if they have Check for Updates. Before replacing, note whether
+Open at login is enabled, then disable it in the old app to remove its old
+registration. Quit Uso and replace it in Applications. Settings and notification
+comparison history are copied automatically; your provider sign-ins are unchanged.
+Enable Open at login again if it was on, and allow macOS notifications when asked.
+The old update feed stays on 0.2.10; future new-ID builds use a separate feed.
 
 REMOVE
 Quit Uso, remove it from Login Items if added, then move the app to Trash.

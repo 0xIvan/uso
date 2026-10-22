@@ -83,13 +83,15 @@ enum SelfCheck {
         let idleLabels = labels(in: controller.view)
         guard idleLabels.contains("Window not started"), !idleLabels.contains("Reset time unavailable"),
               !idleLabels.contains("Codex"), idleLabels.contains("Claude"),
-              idleLabels.contains("Live"), !idleLabels.contains("Unavailable") else { return false }
+              !idleLabels.contains("Live"), !idleLabels.contains("Unavailable") else { return false }
         idle.baseLimits.fiveHour?.usedPercent = 10
         controller.update(absent, claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false))
         guard labels(in: controller.view).contains("Reset time unavailable") else { return false }
         controller.update(absent, claude: absent)
         let absentLabels = labels(in: controller.view)
-        return !absentLabels.contains("Codex") && !absentLabels.contains("Claude")
+        return UsageRing.allCases.allSatisfy { provider in
+            absentLabels.contains("\(provider.title): run \(provider.loginCommand)")
+        }
     }
 
     private static func checkNestedRings() -> Bool {

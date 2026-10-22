@@ -135,4 +135,6 @@ enum RingRenderer {
 enum BaseLimitRole {
     case fiveHour
     case weekly
+
+    var title: String { self == .fiveHour ? "5-hour" : "Weekly" }
 }

@@ -24,9 +24,11 @@ final class ClaudeUsageClient {
                 response = fetchUsage(token: credentials.accessToken)
             }
             guard let status = response.status else { throw UsageIssue.unavailable }
-            guard (200..<300).contains(status), let data = response.data, let snapshot = Self.decode(data) else {
+            guard (200..<300).contains(status), let data = response.data, var snapshot = Self.decode(data) else {
                 throw Self.issue(for: status)
             }
+            snapshot.accountIdentifier = store.accountIdentifier(for: credentials)
+            snapshot.planType = credentials.oauth["subscriptionType"] as? String
             return UsageLoadResult(snapshot: snapshot, issue: snapshot.hasAnyData ? nil : .noData)
         } catch {
             return UsageLoadResult(snapshot: nil, issue: error as? UsageIssue ?? .unavailable)

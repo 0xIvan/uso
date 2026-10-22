@@ -68,7 +68,7 @@ final class MenuContentViewController: NSViewController {
             content.addArrangedSubview(claudeHeading)
             content.setCustomSpacing(8, after: claudeHeading)
             if let snapshot = claudePresentation.snapshot, snapshot.hasAnyData {
-                if let issue = claudePresentation.issue { content.addArrangedSubview(messageLabel(issue.title)) }
+                if let issue = providerIssueText(claudePresentation) { content.addArrangedSubview(messageLabel(issue)) }
                 var rows: [NSView] = []
                 if let bucket = snapshot.baseLimits.fiveHour { rows.append(limitRow(role: .fiveHour, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
                 if let bucket = snapshot.baseLimits.weekly { rows.append(limitRow(role: .weekly, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
@@ -79,9 +79,12 @@ final class MenuContentViewController: NSViewController {
         }
 
         if !presentation.hasSignIn && !claudePresentation.hasSignIn {
-            content.addArrangedSubview(messageLabel(presentation.isRefreshing || claudePresentation.isRefreshing
-                ? "Checking signed-in providers…"
-                : "Sign in with Codex or Claude Code, then refresh to see usage."))
+            if isRefreshing {
+                content.addArrangedSubview(messageLabel("Checking signed-in providers…"))
+            } else {
+                let rows = UsageRing.allCases.enumerated().map { signInRow($0.element, index: $0.offset) }
+                content.addArrangedSubview(card(containing: rows))
+            }
         }
 
         content.addArrangedSubview(separator())
@@ -89,18 +92,32 @@ final class MenuContentViewController: NSViewController {
 
         view.layoutSubtreeIfNeeded()
         let height = ceil(content.fittingSize.height) + 26
-        preferredContentSize = NSSize(width: 320, height: max(height, 190))
+        preferredContentSize = NSSize(width: 320, height: height)
         view.frame.size = preferredContentSize
     }
 
-    private var headerPresentation: UsagePresentation {
-        if presentation.hasSignIn { return presentation }
-        if claudePresentation.hasSignIn { return claudePresentation }
-        return presentation
+    private var headerSnapshot: UsageSnapshot? {
+        [presentation, claudePresentation].filter(\.hasSignIn)
+            .compactMap(\.snapshot).filter(\.hasAnyData)
+            .max { $0.updatedAt < $1.updatedAt }
+    }
+
+    private var isRefreshing: Bool {
+        presentation.isRefreshing || claudePresentation.isRefreshing
+    }
+
+    private var hasLiveSnapshot: Bool {
+        [presentation, claudePresentation].contains {
+            $0.hasSignIn && $0.snapshot?.source == .live && $0.snapshot?.hasAnyData == true
+        }
+    }
+
+    private func providerIssueText(_ presentation: UsagePresentation) -> String? {
+        guard let issue = presentation.issue else { return nil }
+        return issue == .offlineCached && !hasLiveSnapshot ? nil : issue.title
     }
 
     private func headerView() -> NSView {
-        let presentation = headerPresentation
         let icon = NSImageView(image: NSApp.applicationIconImage)
         icon.imageScaling = .scaleProportionallyDown
         icon.setAccessibilityElement(false)
@@ -111,27 +128,27 @@ final class MenuContentViewController: NSViewController {
         ])
 
         let title = label("Uso", size: 15, weight: .semibold, color: .labelColor)
-        let freshness: NSTextField
-        if let snapshot = presentation.snapshot, snapshot.hasAnyData {
+        let freshness: NSTextField?
+        if let snapshot = headerSnapshot {
             freshness = label(
                 "Updated \(UsageFormatting.updated(snapshot.updatedAt))",
                 size: 11,
                 weight: .regular,
                 color: .secondaryLabelColor
             )
-        } else if presentation.isRefreshing {
+        } else if isRefreshing {
             freshness = label("Refreshing…", size: 11, weight: .regular, color: .secondaryLabelColor)
         } else {
-            freshness = label(presentation.hasSignIn ? "No current snapshot" : "No providers signed in", size: 11, weight: .regular, color: .secondaryLabelColor)
+            freshness = nil
         }
 
-        let text = NSStackView(views: [title, freshness])
+        let text = NSStackView(views: [title] + (freshness.map { [$0] } ?? []))
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 1
 
         let status = statusBadge()
-        let row = NSStackView(views: [icon, text, flexibleSpacer(), status])
+        let row = NSStackView(views: [icon, text, flexibleSpacer()] + (status.map { [$0] } ?? []))
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 9
@@ -140,8 +157,8 @@ final class MenuContentViewController: NSViewController {
     }
 
     private func addSnapshot(_ snapshot: UsageSnapshot, to content: NSStackView) {
-        if let issue = presentation.issue {
-            content.addArrangedSubview(messageLabel(issue.title))
+        if let issue = providerIssueText(presentation) {
+            content.addArrangedSubview(messageLabel(issue))
         }
 
         var baseRows: [NSView] = []
@@ -178,20 +195,18 @@ final class MenuContentViewController: NSViewController {
     }
 
     private func limitRow(role: BaseLimitRole, bucket: LimitBucket, provider: UsageRing = .codex, width: CGFloat) -> NSView {
-        let name: String
         let resetText: String
         switch role {
         case .fiveHour:
-            name = "5h"
             resetText = provider.hasUnstartedWindow(bucket) ? "Window not started" : UsageFormatting.resetTime(bucket.resetAt)
         case .weekly:
-            name = "1w"
             resetText = UsageFormatting.resetDateText(bucket.resetAt)
         }
 
-        let nameLabel = label(name, size: 13, weight: .semibold, color: .labelColor)
+        let exhausted = bucket.remainingPercent <= 0
+        let nameLabel = label(role.title, size: 13, weight: .semibold, color: .labelColor)
         let resetLabel = label(resetText, size: 11, weight: .regular, color: cardSecondaryColor)
-        let textStack = NSStackView(views: [nameLabel, resetLabel])
+        let textStack = NSStackView(views: [nameLabel] + (exhausted ? [] : [resetLabel]))
         textStack.orientation = .vertical
         textStack.alignment = .leading
         textStack.spacing = 2
@@ -199,30 +214,35 @@ final class MenuContentViewController: NSViewController {
         let pace = UsagePaceCalculator.calculate(bucket: bucket)
         let tintColor = PacePalette.color(for: bucket)
         let percentLabel = label(
-            "\(UsageFormatting.percent(bucket.remainingPercent)) remaining",
+            exhausted ? UsageFormatting.limitReached(bucket) : "\(UsageFormatting.percent(bucket.remainingPercent)) remaining",
             size: 12,
             weight: .semibold,
             color: tintColor
         )
         percentLabel.alignment = .right
         percentLabel.setContentHuggingPriority(.required, for: .horizontal)
+        if exhausted {
+            percentLabel.lineBreakMode = .byWordWrapping
+            percentLabel.maximumNumberOfLines = 0
+            percentLabel.preferredMaxLayoutWidth = width - nameLabel.intrinsicContentSize.width - 8
+            percentLabel.widthAnchor.constraint(equalToConstant: percentLabel.preferredMaxLayoutWidth).isActive = true
+            percentLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+            nameLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
 
-        let header = NSStackView(views: [textStack, flexibleSpacer(), percentLabel])
+        let header = NSStackView(views: [textStack] + (exhausted ? [] : [flexibleSpacer()]) + [percentLabel])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 8
         header.widthAnchor.constraint(equalToConstant: width).isActive = true
 
-        guard let pace else {
+        guard !exhausted, let pace else {
             return header
         }
 
-        let status = label(
-            UsageFormatting.paceStatus(pace),
-            size: 11,
-            weight: .semibold,
-            color: tintColor
-        )
+        let status = UsageFormatting.paceStatus(pace).map {
+            label($0, size: 11, weight: .semibold, color: tintColor)
+        }
         let paceBar = UsagePaceBarView(pace: pace, tintColor: tintColor)
         paceBar.widthAnchor.constraint(equalToConstant: width).isActive = true
 
@@ -243,7 +263,7 @@ final class MenuContentViewController: NSViewController {
         legend.alignment = .centerY
         legend.widthAnchor.constraint(equalToConstant: width).isActive = true
 
-        let row = NSStackView(views: [header, status, paceBar, legend])
+        let row = NSStackView(views: [header] + (status.map { [$0] } ?? []) + [paceBar, legend])
         row.orientation = .vertical
         row.alignment = .leading
         row.spacing = 4
@@ -353,28 +373,50 @@ final class MenuContentViewController: NSViewController {
     }
 
     private func controlsView() -> NSView {
-        let refresh = NSButton(title: presentation.isRefreshing ? "Refreshing…" : "Refresh", target: self, action: #selector(refreshPressed))
-        refresh.bezelStyle = .rounded
-        refresh.controlSize = .small
-        refresh.isEnabled = !presentation.isRefreshing
-        refresh.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
-        refresh.imagePosition = .imageLeading
-
-        let quit = NSButton(title: "Quit", target: self, action: #selector(quitPressed))
-        quit.isBordered = false
-        quit.controlSize = .small
-        quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-        quit.imagePosition = .imageLeading
-        quit.contentTintColor = .secondaryLabelColor
-
-        let settings = NSButton(title: "Settings…", target: self, action: #selector(settingsPressed))
-        settings.bezelStyle = .rounded
-        settings.controlSize = .small
+        let refresh = actionButton(title: isRefreshing ? "Refreshing…" : "Refresh",
+                                   symbol: "arrow.clockwise", action: #selector(refreshPressed))
+        refresh.isEnabled = !isRefreshing
+        let settings = actionButton(title: "Settings", symbol: "gearshape", action: #selector(settingsPressed))
+        let quit = actionButton(title: "Quit", symbol: "power", bordered: false, action: #selector(quitPressed))
         let row = NSStackView(views: [refresh, settings, flexibleSpacer(), quit])
         row.orientation = .horizontal
         row.alignment = .centerY
+        row.spacing = 8
         row.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
         return row
+    }
+
+    private func signInRow(_ provider: UsageRing, index: Int) -> NSView {
+        let copy = actionButton(title: "Copy command", symbol: nil, action: #selector(copyLoginCommand(_:)))
+        copy.tag = index
+        copy.setAccessibilityLabel("Copy \(provider.title) login command")
+        copy.setContentHuggingPriority(.required, for: .horizontal)
+        copy.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let text = NSTextField(wrappingLabelWithString: "\(provider.title): run \(provider.loginCommand)")
+        text.font = .systemFont(ofSize: 11)
+        text.textColor = cardSecondaryColor
+        text.preferredMaxLayoutWidth = contentWidth - cardInset * 2 - copy.fittingSize.width - 8
+        text.widthAnchor.constraint(equalToConstant: text.preferredMaxLayoutWidth).isActive = true
+        text.setContentCompressionResistancePriority(.required, for: .vertical)
+        let row = NSStackView(views: [text, copy])
+        row.alignment = .centerY
+        row.spacing = 8
+        row.widthAnchor.constraint(equalToConstant: contentWidth - cardInset * 2).isActive = true
+        return row
+    }
+
+    private func actionButton(title: String, symbol: String?, bordered: Bool = true, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.isBordered = bordered
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        button.imageHugsTitle = true
+        button.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }?
+            .withSymbolConfiguration(.init(pointSize: NSFont.smallSystemFontSize, weight: .regular))
+        button.imagePosition = .imageLeading
+        button.contentTintColor = bordered ? nil : .secondaryLabelColor
+        return button
     }
 
     private func separator() -> NSBox {
@@ -431,21 +473,24 @@ final class MenuContentViewController: NSViewController {
         return box
     }
 
-    private func statusBadge() -> NSView {
-        let presentation = headerPresentation
+    private func statusBadge() -> NSView? {
+        let providers = [presentation, claudePresentation]
+        if hasLiveSnapshot { return nil }
         let text: String
         let color: NSColor
-        if presentation.isRefreshing {
-            text = "Refreshing"
+        if headerSnapshot != nil {
+            text = "Cached"
+            color = .systemOrange
+        } else if isRefreshing {
+            return nil
+        } else if !providers.contains(where: \.hasSignIn) {
+            text = "No sign-in"
             color = .secondaryLabelColor
-        } else if let snapshot = presentation.snapshot, snapshot.hasAnyData {
-            text = snapshot.source.rawValue
-            color = snapshot.source == .live
-                ? RingPalette.color(forRemaining: 100)
-                : .systemOrange
+        } else if providers.contains(where: { $0.issue != nil && $0.issue != .noData && $0.issue != .notSignedIn }) {
+            text = "Offline"
+            color = .secondaryLabelColor
         } else {
-            text = presentation.hasSignIn ? "Unavailable" : "No sign-in"
-            color = .secondaryLabelColor
+            return nil
         }
 
         let dot = NSView()
@@ -522,6 +567,14 @@ final class MenuContentViewController: NSViewController {
     }
 
     @objc private func settingsPressed() { onSettings?() }
+
+    @objc private func copyLoginCommand(_ sender: NSButton) {
+        let provider = UsageRing.allCases[sender.tag]
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(provider.loginCommand, forType: .string)
+        sender.title = "Copied"
+        sender.setAccessibilityLabel("\(provider.title) login command copied")
+    }
 
     @objc private func quitPressed() {
         onQuit?()

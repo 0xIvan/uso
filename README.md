@@ -8,13 +8,15 @@ All rings use the same pace calculation: usage compared with the elapsed portion
 
 Providers without a local subscription sign-in are hidden from the menu bar and usage menu. Settings keeps your visibility preferences for when you sign in again. Failed fetches keep signed-in providers visible but hide usage values and show “Log in again” with provider-specific instructions. If neither provider is signed in, a small Uso button keeps Settings and Refresh accessible. Claude five-hour usage at 0% without a reset timestamp is shown as “Window not started.”
 
+Uso checks each successful usage fetch for an increase in remaining allowance for Codex and Claude. It also checks Codex for newly granted redeemable resets. Each restored usage window gets its own alert, such as **Codex weekly limit reset!** or **Claude 5h limit reset!**, including unscheduled resets. New reset credits use **Codex reset available!**. The first reading establishes a baseline without alerting. Each provider’s last reading is saved locally and scoped to its account, so restarting does not repeat alerts or compare different accounts. Newly granted resets are detected by credit IDs when available, with a count comparison as fallback. Notifications are on by default; allow them when macOS asks. Toggle **Limit reset alerts** in Settings. Detection happens on the next refresh (normally every five minutes), on manual refresh, or after waking; Uso must be running. There are no alerts scheduled for expected reset timestamps. macOS notification settings and Focus determine how alerts appear.
+
 ## Install on another Mac
 
 Open the DMG, drag **Uso** to **Applications**, eject the image, and open the app. No developer tools are required on the receiving Mac. The app appears in the menu bar with no Dock icon. Open Settings from its menu to choose rings.
 
 Requires macOS 13+ on Apple Silicon or Intel, and a local Codex ChatGPT sign-in whose credentials are readable in `~/.codex/auth.json`. Keychain-only and API-key-only authentication are not supported. Uso does not sign in or renew Codex tokens itself. Claude usage requires a Claude Code subscription sign-in stored in the macOS Keychain or `~/.claude/.credentials.json`; API keys do not provide subscription limits.
 
-See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Enable **Start at login** in Uso’s Settings to launch automatically when you sign in. If macOS requires approval, Uso opens Login Items in System Settings. After installing a Sparkle-enabled build, choose **Check for Updates…** in Uso’s Settings to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
+See [installation and troubleshooting](docs/installation.txt) and [privacy](docs/privacy.md). Enable **Open at login** in Uso’s Settings to launch automatically when you sign in. If macOS requires approval, Uso opens Login Items in System Settings. After installing a Sparkle-enabled build, choose **Check for Updates…** in Uso’s Settings to download, install, and relaunch into a published update. Background checks and unattended installation are disabled. Older builds need one manual replacement to gain this feature.
 
 ## Build a shareable DMG
 
@@ -90,7 +92,7 @@ See [distribution terms](LICENSE).
 Pushes to `main` run universal build checks, then automatically bump the patch
 version and build number, push a release commit and tag, and start the release
 workflow. It signs, notarizes, and verifies the DMG and Sparkle feed before
-publishing a stable GitHub Release with the DMG, checksum, and `appcast.xml`.
+publishing a stable GitHub Release with the DMG, checksum, and both Sparkle feeds.
 Installed apps can then discover the update. Failed checks prevent publication.
 Pull requests run checks only. Superseded pushes are skipped in favor of the
 newest commit. The bot's version commit does not trigger another release.
@@ -107,14 +109,18 @@ instructions for retrying a release job.
 
 ## In-app updates
 
-Sparkle checks `https://github.com/0xIvan/uso/releases/latest/download/appcast.xml`
+Sparkle checks `https://github.com/0xIvan/uso/releases/latest/download/appcast-com.ivan.uso.xml`
 when the user chooses **Check for Updates…** in Settings. GitHub resolves that URL to the
 latest published stable release; drafts and prereleases are not offered.
 The feed points to a version-specific DMG download. Both feed and archive are
 verified with the public Ed25519 key embedded in `Info.plist`, in addition to
 Apple code signing. No application credentials are included in update requests.
-The first Sparkle-enabled release must be installed manually. Until that release
-is published, the feed is unavailable and manual checks display an update error.
+Builds using the old `local.codex.usage-rings` bundle ID need one manual replacement
+to adopt `com.ivan.uso`; Sparkle cannot update across bundle IDs. The old feed
+remains pinned to 0.2.10. New builds use their own feed and the same signing key.
+Settings and reset-notification baselines are copied once, preserving any choices
+already saved under the new ID. macOS notification authorization must be granted
+again. See the installation instructions for preserving Open at login.
 
 The Sparkle framework's third-party license is included in the app bundle at
 `Contents/Resources/Sparkle-LICENSE.txt`.

@@ -3,9 +3,12 @@ set -euo pipefail
 
 INSTALLED_APP="/Applications/Uso.app"
 LEGACY_APP="/Applications/CodexUsageRings.app"
-LAUNCH_AGENT_PATH="${HOME}/Library/LaunchAgents/local.codex.usage-rings.plist"
+LAUNCH_AGENT_PATH="${HOME}/Library/LaunchAgents/com.ivan.uso.plist"
+LEGACY_LAUNCH_AGENT_PATH="${HOME}/Library/LaunchAgents/local.codex.usage-rings.plist"
 DOMAIN="gui/$(id -u)"
 
+launchctl bootout "${DOMAIN}" "${LEGACY_LAUNCH_AGENT_PATH}" >/dev/null 2>&1 || true
+rm -f "${LEGACY_LAUNCH_AGENT_PATH}"
 launchctl bootout "${DOMAIN}" "${LAUNCH_AGENT_PATH}" >/dev/null 2>&1 || true
 rm -f "${LAUNCH_AGENT_PATH}"
 rm -rf "${INSTALLED_APP}"

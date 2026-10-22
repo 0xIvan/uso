@@ -20,6 +20,7 @@ enum UsoMain {
             exit(renderPreview(path: previewPath, codexHome: options.codexHome) ? 0 : 1)
         }
 
+        BundleIdentityMigration.migratePreferences()
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         let delegate = AppDelegate(codexHome: options.codexHome, showsSettings: options.showsSettings)

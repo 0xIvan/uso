@@ -8,12 +8,15 @@ INSTALLED_APP="${INSTALL_DIR}/Uso.app"
 LEGACY_APP="${INSTALL_DIR}/CodexUsageRings.app"
 PREVIOUS_APP="${INSTALL_DIR}/Codex Halo.app"
 LAUNCH_AGENT_DIR="${HOME}/Library/LaunchAgents"
-LAUNCH_AGENT_PATH="${LAUNCH_AGENT_DIR}/local.codex.usage-rings.plist"
+LAUNCH_AGENT_PATH="${LAUNCH_AGENT_DIR}/com.ivan.uso.plist"
+LEGACY_LAUNCH_AGENT_PATH="${HOME}/Library/LaunchAgents/local.codex.usage-rings.plist"
 DOMAIN="gui/$(id -u)"
 
 "${ROOT_DIR}/tools/build.sh" "${BUILT_APP}"
 mkdir -p "${INSTALL_DIR}" "${LAUNCH_AGENT_DIR}"
 
+launchctl bootout "${DOMAIN}" "${LEGACY_LAUNCH_AGENT_PATH}" >/dev/null 2>&1 || true
+rm -f "${LEGACY_LAUNCH_AGENT_PATH}"
 launchctl bootout "${DOMAIN}" "${LAUNCH_AGENT_PATH}" >/dev/null 2>&1 || true
 rm -rf "${INSTALLED_APP}"
 ditto "${BUILT_APP}" "${INSTALLED_APP}"
@@ -26,7 +29,7 @@ cat >"${LAUNCH_AGENT_PATH}" <<PLIST
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>local.codex.usage-rings</string>
+  <string>com.ivan.uso</string>
   <key>ProgramArguments</key>
   <array>
     <string>${INSTALLED_APP}/Contents/MacOS/Uso</string>
@@ -39,6 +42,6 @@ PLIST
 
 plutil -lint "${LAUNCH_AGENT_PATH}" >/dev/null
 launchctl bootstrap "${DOMAIN}" "${LAUNCH_AGENT_PATH}"
-launchctl kickstart -k "${DOMAIN}/local.codex.usage-rings"
+launchctl kickstart -k "${DOMAIN}/com.ivan.uso"
 
 echo "Installed and started ${INSTALLED_APP}"

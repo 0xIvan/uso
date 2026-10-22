@@ -30,6 +30,15 @@ write locks, preserves unrelated fields, and checks for a newer login or logout
 before saving. It does not perform inference requests. Anthropic processes these
 requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
+The reset-notification preference and last successful reading for each provider
+are also saved locally in UserDefaults. Claude account/organization identifiers
+are read from `~/.claude.json` to keep its baseline stable across token renewals;
+when unavailable, a hash of the current access token scopes the baseline instead.
+The reading contains a hashed account identifier, plan, remaining allowance,
+Codex reset-credit IDs/count, and observation time, solely to detect changes
+without repeating alerts across launches. It is not used to display cached
+usage. Notifications contain changed allowance or the number of newly available
+reset credits; credentials and account identifiers are never included.
 
 When you choose Check for Updates…, Sparkle requests the signed update feed and,
 if you choose to install, the update archive from GitHub's release asset service.

@@ -29,6 +29,7 @@ enum UsageDecoder {
     }
 
     private struct ResetCreditPayload: Decodable {
+        var id: String?
         var reset_type: String
         var status: String
         var expires_at: String?
@@ -103,7 +104,7 @@ enum UsageDecoder {
             .map { credit in
                 AvailableReset(expiresAt: credit.expires_at.flatMap {
                     fractional.date(from: $0) ?? standard.date(from: $0)
-                })
+                }, id: credit.id)
             }
             .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
     }

@@ -131,21 +131,32 @@ checks the version, build, URL, size, and archive signature against the embedded
 public key before the generated feed can replace the previous file. Sparkle's license is included
 inside the application bundle.
 
-Each draft contains its own `appcast.xml`, with a version-specific DMG URL.
+Each draft contains `appcast-com.ivan.uso.xml`, with a version-specific DMG URL.
+`tools/appcast.sh` also downloads the original signed 0.2.10 feed from its
+version-specific release URL, verifies its pinned SHA-256, and republishes it
+unchanged as `appcast.xml`. Keep both assets on every release: old bundle IDs
+continue to see their final compatible update, while `com.ivan.uso` uses the new
+feed. Do not repoint the old feed at a new-ID DMG; Sparkle requires matching
+bundle IDs. Existing old-ID installations need one manual replacement.
+The Ed25519 public key is unchanged, and the original 0.2.10 release assets must
+remain available. The new feed will return 404 until the first new-ID release.
 Publishing the stable release makes that file available through
-`https://github.com/0xIvan/uso/releases/latest/download/appcast.xml`.
+`https://github.com/0xIvan/uso/releases/latest/download/appcast-com.ivan.uso.xml`.
 The app does not poll GitHub APIs or offer draft/prerelease updates. Do not mark a
 lower version as latest, and retain published release assets for existing clients.
 There is no separate feed-deployment job and no private feed-hosting credentials.
 
 Manual update verification before publishing the first Sparkle-enabled release:
 
-1. Install it manually; previous versions cannot gain Sparkle remotely.
+1. Install the new-ID app manually. Disable Open at login in the old-ID app
+   before replacing it, then restore it in the new app if previously enabled.
+   Verify migrated provider choices and notification baselines, then grant
+   notification permission for the new identity.
 2. Check that the button in Settings opens Sparkle's UI and that a repeated check is
    disabled while the first is in progress.
 3. For a controlled update test, use a temporary older and newer app with a
    signed test feed; never redirect normal users to test releases.
 4. Verify download, signature validation, replacement, relaunch, and retained
    preferences from an app copied to Applications. Complete this again against
-   published notarized builds when available. Until the first Sparkle release
-   is published, the production feed URL returns no feed.
+   published notarized builds when available. Until the first new-ID release
+   is published, its production feed URL returns no feed.

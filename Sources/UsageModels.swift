@@ -90,6 +90,7 @@ enum UsageSource: String, Equatable {
 
 struct AvailableReset: Equatable {
     var expiresAt: Date?
+    var id: String? = nil
 }
 
 struct UsageSnapshot: Equatable {
@@ -100,6 +101,7 @@ struct UsageSnapshot: Equatable {
     var source: UsageSource
     var availableResetCount: Int?
     var availableResets: [AvailableReset]?
+    var accountIdentifier: String? = nil
 
     var hasAnyData: Bool {
         baseLimits.fiveHour != nil || baseLimits.weekly != nil || !additionalLimits.isEmpty
@@ -187,29 +189,21 @@ enum LimitDurationMapper {
 
 enum UsageFormatting {
     static func percent(_ value: Double) -> String {
-        if abs(value.rounded() - value) < 0.05 {
-            return "\(Int(value.rounded()))%"
-        }
-        return String(format: "%.1f%%", value)
+        String(format: "%.0f%%", value.rounded())
     }
 
     static func resetTime(_ resetAt: TimeInterval?) -> String {
-        guard let date = resetDate(resetAt) else {
+        guard let text = formattedReset(resetAt, includeDate: false) else {
             return "Reset time unavailable"
         }
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        formatter.dateStyle = .none
-        return "Resets \(formatter.string(from: date))"
+        return "Resets \(text)"
     }
 
     static func resetDateText(_ resetAt: TimeInterval?) -> String {
-        guard let date = resetDate(resetAt) else {
+        guard let text = formattedReset(resetAt, includeDate: true) else {
             return "Reset date unavailable"
         }
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("dMMMjm")
-        return "Resets \(formatter.string(from: date))"
+        return "Resets \(text)"
     }
 
     static func adaptiveReset(_ bucket: LimitBucket) -> String {
@@ -219,14 +213,29 @@ enum UsageFormatting {
         return resetTime(bucket.resetAt)
     }
 
-    static func paceStatus(_ pace: UsagePace) -> String {
-        if pace.isOverPace {
-            return "\(percent(pace.differencePercent)) over pace"
+    static func limitReached(_ bucket: LimitBucket) -> String {
+        guard let text = formattedReset(bucket.resetAt, includeDate: (bucket.windowMinutes ?? 0) >= 1_440) else {
+            return "Limit reached · reset time unavailable"
         }
-        if pace.isUnderPace {
-            return "\(percent(abs(pace.differencePercent))) under pace"
+        return "Limit reached · resets \(text)"
+    }
+
+    static func paceStatus(_ pace: UsagePace) -> String? {
+        guard pace.isOverPace else { return nil }
+        let points = pace.differencePercent.rounded()
+        return String(format: "%.0f", points) + " \(points == 1 ? "pt" : "pts") ahead of pace"
+    }
+
+    private static func formattedReset(_ resetAt: TimeInterval?, includeDate: Bool) -> String? {
+        guard let date = resetDate(resetAt) else { return nil }
+        let formatter = DateFormatter()
+        if includeDate {
+            formatter.setLocalizedDateFormatFromTemplate("dMMMjm")
+        } else {
+            formatter.timeStyle = .short
+            formatter.dateStyle = .none
         }
-        return "On pace"
+        return formatter.string(from: date)
     }
 
     static func updated(_ date: Date) -> String {

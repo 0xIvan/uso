@@ -1,4 +1,10 @@
-Added **Start at login** to Uso’s Settings. Enable it to open Uso automatically when you sign in, or disable it to stop automatic startup. The setting reflects macOS login-item status and opens System Settings when approval is required. It also recognizes and can disable the older source installer's startup entry.
+Uso now alerts you when Codex or Claude has more usage available, including unscheduled resets. It also notifies you when new redeemable Codex resets arrive. Alerts are detected on successful refreshes; the first reading stays quiet, and account-scoped notification history persists across restarts. Toggle **Limit reset alerts** in Settings.
+
+Settings now groups Menu bar, Notifications, and General controls, with a Ring guide for reading the menu bar icons.
+
+The usage menu now uses the freshest successful provider reading for its header, keeps provider errors inside their sections, and hides the normal Live badge. Exhausted limits show **Limit reached** and the reset time. Percentages use whole numbers, windows are named **5-hour** and **Weekly**, and pace warnings appear only when usage is ahead of pace. Signed-out users get a separate login command and Copy command button for each provider.
+
+**One-time manual upgrade:** Uso now uses `com.ivan.uso`. In an older build, note whether Open at login is on, then turn it off. Quit Uso, download this release, and replace Uso in Applications. Restore Open at login if previously enabled, and allow notifications when macOS asks. Settings and reset-notification history migrate automatically; provider sign-ins are preserved. Future new-ID builds use a separate signed update feed, while old builds retain their final compatible update.
 
 Uso is a native macOS menu bar utility showing remaining Codex and Claude subscription usage. Requires macOS 13 or newer; the download includes Apple Silicon and Intel binaries.
 

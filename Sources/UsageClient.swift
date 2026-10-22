@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 final class UsageClient: @unchecked Sendable {
     private let session = URLSession(configuration: .ephemeral)
@@ -37,6 +38,8 @@ final class UsageClient: @unchecked Sendable {
               var snapshot = UsageDecoder.liveSnapshot(from: data) else {
             return nil
         }
+        snapshot.accountIdentifier = SHA256.hash(data: Data((credentials.accountID ?? credentials.accessToken).utf8))
+            .map { String(format: "%02x", $0) }.joined()
         // Expiry details have a separate endpoint; failure must not discard live usage.
         if snapshot.availableResetCount != 0,
            let data = readLiveData(from: resetCreditsEndpoint, credentials: credentials),

@@ -7,10 +7,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let client: UsageClient
     private let claudeClient = ClaudeUsageClient()
     private let settings = RingSettings()
+    private let resetNotifications = ResetNotifications()
     private lazy var settingsController = SettingsWindowController(settings: settings)
     private var claudePresentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
     private var lastClaudeRefresh = Date.distantPast
-    private let workerQueue = DispatchQueue(label: "local.codex.usage-rings.refresh", qos: .utility)
+    private let workerQueue = DispatchQueue(label: "com.ivan.uso.refresh", qos: .utility)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let menuItem = NSMenuItem()
@@ -30,9 +31,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        do {
+            try BundleIdentityMigration.restoreLoginItem()
+        } catch {
+            fputs("Uso: could not restore the login item: \(error.localizedDescription)\n", stderr)
+        }
         observeAppearance()
         configureStatusItem()
         configureMenu()
+        resetNotifications.onStatusChange = { [weak self] text in
+            self?.settingsController.updateNotificationStatus(text)
+        }
         updaterObservation = updaterController.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
             let canCheck = updater.canCheckForUpdates
             DispatchQueue.main.async { [weak self] in
@@ -146,6 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateInterface() {
         precondition(Thread.isMainThread)
+        resetNotifications.synchronize(settings: settings, codex: presentation, claude: claudePresentation)
         let rings = settings.visible(codex: presentation, claude: claudePresentation)
         let image = RingRenderer.statusImage(limits: rings.map { $0.limits(codex: presentation, claude: claudePresentation) }, icons: rings.map(\.icon))
         statusItem.length = image.size.width
@@ -159,10 +169,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var lines = ["Uso"]
         for ring in settings.visible(codex: presentation, claude: claudePresentation) {
             let limits = ring.limits(codex: presentation, claude: claudePresentation)
-            for (name, bucket) in [("5h", limits.fiveHour), ("Weekly", limits.weekly)] {
+            for (role, bucket) in [(BaseLimitRole.fiveHour, limits.fiveHour), (.weekly, limits.weekly)] {
                 guard let bucket else { continue }
-                let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : (UsagePaceCalculator.calculate(bucket: bucket).map(UsageFormatting.paceStatus) ?? "Pace unavailable")
-                lines.append("\(ring.title) \(name): \(UsageFormatting.percent(bucket.remainingPercent)) remaining · \(pace)")
+                let detail: String
+                if bucket.remainingPercent <= 0 {
+                    detail = UsageFormatting.limitReached(bucket)
+                } else {
+                    let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : UsagePaceCalculator.calculate(bucket: bucket).flatMap(UsageFormatting.paceStatus)
+                    detail = "\(UsageFormatting.percent(bucket.remainingPercent)) remaining" + (pace.map { " · \($0)" } ?? "")
+                }
+                lines.append("\(ring.title) \(role.title): \(detail)")
             }
         }
 
