@@ -60,7 +60,22 @@ jobs:
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
           xcrun notarytool store-credentials "$NOTARY_PROFILE" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
       - name: Build, notarize, and verify MacMirrorly
-        run: scripts/release-dmg.sh
+        run: |
+          xcrun() {
+            if [[ "$1" != stapler || "$2" != staple ]]; then
+              /usr/bin/xcrun "$@"
+              return $?
+            fi
+            local attempt status
+            for attempt in 1 2 3 4 5; do
+              if /usr/bin/xcrun "$@"; then return 0; else status=$?; fi
+              if [[ "$status" != 68 || "$attempt" == 5 ]]; then return "$status"; fi
+              echo "Apple ticket delivery failed (68); retry $attempt/5 in 10 seconds."
+              sleep 10
+            done
+          }
+          export -f xcrun
+          scripts/release-dmg.sh
       - name: Generate signed update feed
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.MACMIRRORLY_SPARKLE_PRIVATE_KEY }}
