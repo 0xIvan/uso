@@ -222,8 +222,7 @@ enum UsageFormatting {
 
     static func paceStatus(_ pace: UsagePace) -> String? {
         guard pace.isOverPace else { return nil }
-        let points = pace.differencePercent.rounded()
-        return String(format: "%.0f", points) + " \(points == 1 ? "pt" : "pts") ahead of pace"
+        return "\(percent(pace.differencePercent)) ahead of pace"
     }
 
     private static func formattedReset(_ resetAt: TimeInterval?, includeDate: Bool) -> String? {

@@ -1,3 +1,5 @@
+Usage bar pace warnings now use `%` instead of `pt` or `pts`.
+
 Uso now alerts you when Codex or Claude has more usage available, including unscheduled resets. It also notifies you when new redeemable Codex resets arrive. Alerts are detected on successful refreshes; the first reading stays quiet, and account-scoped notification history persists across restarts. Toggle **Limit reset alerts** in Settings.
 
 Settings now groups Menu bar, Notifications, and General controls, with a Ring guide for reading the menu bar icons.
