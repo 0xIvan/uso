@@ -1,43 +1,39 @@
-name: Release
+name: MacMirrorly release packaging
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: release-public
-  cancel-in-progress: false
-
 jobs:
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos-15
-    timeout-minutes: 90
-    permissions:
-      contents: write
+  package:
+    if: github.repository == '0xIvan/uso' && github.ref == 'refs/heads/macmirrorly-release-1.0.8'
+    runs-on: macos-15-intel
+    timeout-minutes: 60
     env:
-      RELEASE_TAG: ${{ github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       CODE_SIGN_IDENTITY: 'Developer ID Application: Ivan Hu Yu (AB879DAVK8)'
-      NOTARY_PROFILE: uso-release
+      NOTARY_PROFILE: macmirrorly-release
+      MAC_MIRRORLY_DEVELOPER_ID: 'Developer ID Application: Ivan Hu Yu (AB879DAVK8)'
+      MAC_MIRRORLY_NOTARY_PROFILE: macmirrorly-release
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          fetch-depth: 0
+          repository: 0xIvan/mac-mirrorly
+          ref: 480f0f582079663a24aaf07bd581040e1ba5cc6d
           persist-credentials: false
-      - name: Validate release version and existing release
+      - name: Validate pinned release source
         run: |
-          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)
-          [[ "$RELEASE_TAG" == "v$version" ]] || { echo 'Tag must match Info.plist version.' >&2; exit 1; }
-          git merge-base --is-ancestor HEAD origin/main
-          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/existing-release.json"; then
-            python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["isDraft"] else "Refusing to overwrite a published release.")' "$RUNNER_TEMP/existing-release.json"
-          fi
+          test "$(git rev-parse HEAD)" = 480f0f582079663a24aaf07bd581040e1ba5cc6d
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)" = 1.0.8
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/Info.plist)" = 9
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build and test release source
+        run: |
+          xcodegen generate
+          xcodebuild test -project MacMirrorly.xcodeproj -scheme MacMirrorly -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -quiet
       - name: Configure signing and notarization
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -63,28 +59,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
           xcrun notarytool store-credentials "$NOTARY_PROFILE" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
-      - name: Build, notarize, and verify DMG
-        run: tools/package.sh --release
-      - name: Generate signed Sparkle feed
+      - name: Build, notarize, and verify MacMirrorly
+        run: scripts/release-dmg.sh
+      - name: Generate signed update feed
         env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          [[ -n "$SPARKLE_PRIVATE_KEY" ]] || { echo 'Missing GitHub secret: SPARKLE_PRIVATE_KEY' >&2; exit 1; }
-          tools/appcast.sh
-      - name: Create draft release and attach downloads
-        run: |
-          version=${RELEASE_TAG#v}
-          if ! gh release view "$RELEASE_TAG" --json id > /dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Uso $version" --notes-file docs/release-notes.md
-          fi
-          gh release upload "$RELEASE_TAG" "dist/Uso-$version-universal.dmg" "dist/Uso-$version-universal.dmg.sha256" dist/appcast.xml dist/appcast-com.ivan.uso.xml --clobber
-      - name: Publish verified release
-        run: |
-          latest=true
-          if gh release view --json tagName > "$RUNNER_TEMP/latest-release.json"; then
-            latest=$(python3 -c 'import json,sys; current=json.load(open(sys.argv[1]))["tagName"].removeprefix("v"); incoming=sys.argv[2].removeprefix("v"); print(str(tuple(map(int,incoming.split("."))) >= tuple(map(int,current.split(".")))).lower())' "$RUNNER_TEMP/latest-release.json" "$RELEASE_TAG")
-          fi
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest="$latest"
+          SPARKLE_PRIVATE_KEY: ${{ secrets.MACMIRRORLY_SPARKLE_PRIVATE_KEY }}
+        run: scripts/appcast.sh
+      - name: Save verified release downloads
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: MacMirrorly-1.0.8-notarized
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/MacMirrorly-1.0.8-universal.dmg
+            dist/MacMirrorly-1.0.8-universal.dmg.sha256
+            dist/appcast.xml
       - name: Remove signing material
         if: always()
         run: |
