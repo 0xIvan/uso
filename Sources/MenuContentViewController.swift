@@ -520,7 +520,9 @@ final class MenuContentViewController: NSViewController {
     }
 
     private func sectionLabel(_ text: String) -> NSTextField {
-        label(text.uppercased(), size: 10, weight: .semibold, color: .secondaryLabelColor)
+        let field = label(text.uppercased(), size: 10, weight: .semibold, color: .secondaryLabelColor)
+        field.setAccessibilityLabel(text)
+        return field
     }
 
     private var cardSecondaryColor: NSColor {

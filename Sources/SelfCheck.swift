@@ -82,7 +82,7 @@ enum SelfCheck {
         controller.update(absent, claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false))
         let idleLabels = labels(in: controller.view)
         guard idleLabels.contains("Window not started"), !idleLabels.contains("Reset time unavailable"),
-              !idleLabels.contains("Codex"), idleLabels.contains("Claude"),
+              !idleLabels.contains("CODEX"), idleLabels.contains("CLAUDE"),
               !idleLabels.contains("Live"), !idleLabels.contains("Unavailable") else { return false }
         idle.baseLimits.fiveHour?.usedPercent = 10
         controller.update(absent, claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false))
