@@ -52,7 +52,7 @@ final class MenuContentViewController: NSViewController {
 
         if presentation.hasSignIn {
             if let header = content.arrangedSubviews.last { content.setCustomSpacing(18, after: header) }
-            let codexHeading = providerHeading("Codex")
+            let codexHeading = sectionLabel("Codex")
             content.addArrangedSubview(codexHeading)
             content.setCustomSpacing(8, after: codexHeading)
             if let snapshot = presentation.snapshot, snapshot.hasAnyData {
@@ -64,7 +64,7 @@ final class MenuContentViewController: NSViewController {
 
         if claudePresentation.hasSignIn {
             if let previousSection = content.arrangedSubviews.last { content.setCustomSpacing(20, after: previousSection) }
-            let claudeHeading = providerHeading("Claude")
+            let claudeHeading = sectionLabel("Claude")
             content.addArrangedSubview(claudeHeading)
             content.setCustomSpacing(8, after: claudeHeading)
             if let snapshot = claudePresentation.snapshot, snapshot.hasAnyData {
@@ -127,7 +127,7 @@ final class MenuContentViewController: NSViewController {
             icon.heightAnchor.constraint(equalToConstant: 32),
         ])
 
-        let title = label("Uso", size: 15, weight: .semibold, color: .labelColor)
+        let title = label("Uso", size: 13, weight: .semibold, color: .labelColor)
         let freshness: NSTextField?
         if let snapshot = headerSnapshot {
             freshness = label(
@@ -311,7 +311,6 @@ final class MenuContentViewController: NSViewController {
         let name = label(limit.name, size: 11, weight: .medium, color: .labelColor)
         name.lineBreakMode = .byTruncatingTail
         let reset = label(UsageFormatting.adaptiveReset(limit.bucket), size: 10, weight: .regular, color: cardTertiaryColor)
-        reset.setContentHuggingPriority(.required, for: .horizontal)
         let percent = label(
             "\(UsageFormatting.percent(limit.bucket.remainingPercent)) left",
             size: 11,
@@ -320,7 +319,12 @@ final class MenuContentViewController: NSViewController {
         )
         percent.setContentHuggingPriority(.required, for: .horizontal)
 
-        let row = NSStackView(views: [indicator, name, flexibleSpacer(), percent, reset])
+        let text = NSStackView(views: [name, reset])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 1
+
+        let row = NSStackView(views: [indicator, text, flexibleSpacer(), percent])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 7
@@ -515,12 +519,8 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
-    private func providerHeading(_ text: String) -> NSTextField {
-        label(text, size: 14, weight: .semibold, color: .labelColor)
-    }
-
     private func sectionLabel(_ text: String) -> NSTextField {
-        label(text, size: 10, weight: .medium, color: .secondaryLabelColor)
+        label(text.uppercased(), size: 10, weight: .semibold, color: .secondaryLabelColor)
     }
 
     private var cardSecondaryColor: NSColor {
