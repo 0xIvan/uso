@@ -1,4 +1,6 @@
-Uso no longer renews Claude sign-ins. Renewing alongside Claude Code invalidated Claude Code's own login and forced repeated `claude /login`. When the Claude sign-in expires, open Claude Code to renew it, then click Refresh.
+Claude usage keeps working when Claude Code's access token expires. Uso now runs a minimal Claude Code request (Haiku, no tools, no saved session, at most every 15 minutes) so Claude Code renews its own sign-in, instead of showing "sign-in expired" until you next use Claude Code in a terminal.
+
+Uso no longer renews Claude sign-ins itself. Renewing alongside Claude Code invalidated Claude Code's own login and forced repeated `claude /login`.
 
 Usage bar pace warnings now use `%` instead of `pt` or `pts`.
 
@@ -14,7 +16,7 @@ Uso is a native macOS menu bar utility showing remaining Codex and Claude subscr
 
 - Both providers refresh every five minutes, with a manual Refresh button.
 - Weekly usage appears on the outer ring and five-hour usage on the inner ring.
-- Uso no longer renews Claude tokens. Renewing them alongside Claude Code invalidated Claude Code's login; open Claude Code when its sign-in has expired. Both providers' credentials are read-only.
+- Uso no longer renews Claude tokens. Renewing them alongside Claude Code invalidated Claude Code's login; Claude Code renews them when Uso finds the sign-in expired. Both providers' credentials are read-only.
 - Failed requests clear usage readings; no cached logs are used.
 
 Download the DMG under Assets, drag Uso to Applications, eject the image, and open Uso. The app and DMG are Developer ID signed and notarized by Apple. Use Check for Updates… for future published updates; Sparkle downloads, installs, and relaunches Uso after you approve the update.

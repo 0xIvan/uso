@@ -23,9 +23,12 @@ from the `Claude Code-credentials` macOS Keychain entry, or from
 `~/.claude/.credentials.json` when there is no Keychain entry. An inaccessible
 Keychain is treated as temporarily unavailable rather than using a stale file.
 It sends the access token to `https://api.anthropic.com/api/oauth/usage` to read
-subscription usage. It never renews tokens or writes to the credential store;
-Claude Code renews its own login. It does not perform inference requests. Anthropic processes these
-requests under its own policies.
+subscription usage. It never renews tokens or writes to the credential store.
+When the access token has expired or is rejected, Uso runs Claude Code once
+(`claude -p` with Haiku, no tools, no saved session) so Claude Code renews its
+own login; this is a minimal inference request on your subscription, made at
+most every 15 minutes and only while the token is expired. Anthropic processes
+these requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
 The reset-notification preference and last successful reading for each provider
 are also saved locally in UserDefaults. Claude account/organization identifiers

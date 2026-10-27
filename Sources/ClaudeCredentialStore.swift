@@ -9,6 +9,31 @@ struct ClaudeCredentials {
     var isExpired: Bool { expiresAt > 0 && expiresAt <= Date().timeIntervalSince1970 * 1000 }
 }
 
+enum ClaudeCodeSignIn {
+    // Claude Code rotates refresh tokens on use, so only Claude Code may renew; a minimal request makes it do so.
+    static func renew() -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = ["\(home)/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(home)/.claude/local/claude"]
+        guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["-p", "--safe-mode", "--no-session-persistence", "--tools", "", "--model", "haiku", "--max-turns", "1", "Reply with OK."]
+        process.environment = ["HOME": home, "USER": NSUserName(), "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "DISABLE_AUTOUPDATER": "1"]
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let completion = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in completion.signal() }
+        guard (try? process.run()) != nil else { return false }
+        guard completion.wait(timeout: .now() + 60) == .success else {
+            process.terminate()
+            return false
+        }
+        return process.terminationStatus == 0
+    }
+}
+
 final class ClaudeCredentialStore {
     private let directory: URL
     private let usesKeychain: Bool

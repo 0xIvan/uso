@@ -65,8 +65,10 @@ The upstream usage endpoints can change and interrupt Uso.
 A custom CODEX_HOME set only in your shell is not inherited by Finder;
 normal installation expects ~/.codex.
 
-Uso refreshes after wake but never renews Claude tokens itself. If the Claude
-sign-in has expired, open Claude Code to renew it, then click Refresh.
+Uso refreshes after wake but never renews Claude tokens itself. When the
+Claude access token has expired, Uso runs a minimal `claude -p` request so
+Claude Code renews its own sign-in. If that fails, open Claude Code, then click
+Refresh.
 Temporary network errors retry automatically.
 Rate-limited Claude requests retry after five minutes.
 

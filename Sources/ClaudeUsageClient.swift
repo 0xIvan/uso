@@ -7,19 +7,32 @@ final class ClaudeUsageClient {
 
     private let transport: ((URLRequest) -> (status: Int?, data: Data?))?
 
-    init(store: ClaudeCredentialStore = ClaudeCredentialStore(), transport: ((URLRequest) -> (status: Int?, data: Data?))? = nil) {
+    private let renewSignIn: () -> Bool
+
+    private let renewalLock = NSLock()
+
+    private var lastRenewal = Date.distantPast
+
+    init(store: ClaudeCredentialStore = ClaudeCredentialStore(),
+         transport: ((URLRequest) -> (status: Int?, data: Data?))? = nil,
+         renewSignIn: @escaping () -> Bool = ClaudeCodeSignIn.renew) {
         self.store = store
         self.transport = transport
+        self.renewSignIn = renewSignIn
     }
 
     func load() -> UsageLoadResult {
         do {
-            guard let credentials = try store.read() else {
+            guard var credentials = try store.read() else {
                 return UsageLoadResult(snapshot: nil, issue: .notSignedIn)
             }
-            // Claude Code rotates refresh tokens on use; renewing here would invalidate its login.
-            guard !credentials.isExpired else { throw UsageIssue.signInExpired }
-            let response = fetchUsage(token: credentials.accessToken)
+            var response = credentials.isExpired ? nil : fetchUsage(token: credentials.accessToken)
+            if response == nil || response?.status == 401, renewThroughClaudeCode(),
+               let renewed = try store.read(), !renewed.isExpired {
+                credentials = renewed
+                response = fetchUsage(token: renewed.accessToken)
+            }
+            guard let response else { throw UsageIssue.signInExpired }
             guard let status = response.status else { throw UsageIssue.unavailable }
             guard (200..<300).contains(status), let data = response.data, var snapshot = Self.decode(data) else {
                 throw Self.issue(for: status)
@@ -30,6 +43,14 @@ final class ClaudeUsageClient {
         } catch {
             return UsageLoadResult(snapshot: nil, issue: error as? UsageIssue ?? .unavailable)
         }
+    }
+
+    private func renewThroughClaudeCode() -> Bool {
+        renewalLock.lock()
+        defer { renewalLock.unlock() }
+        guard Date().timeIntervalSince(lastRenewal) > 15 * 60 else { return false }
+        lastRenewal = Date()
+        return renewSignIn()
     }
 
     private func fetchUsage(token: String) -> (status: Int?, data: Data?) {
