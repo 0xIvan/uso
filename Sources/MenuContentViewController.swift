@@ -357,7 +357,7 @@ final class MenuContentViewController: NSViewController {
                 titleText = "Log in again"
                 detailText = provider == .codex
                     ? "Could not fetch Codex usage. Sign in to Codex, then refresh."
-                    : "Could not fetch Claude usage. Run claude auth login, then refresh."
+                    : "Could not fetch Claude usage. Open Claude Code to renew its sign-in, then refresh."
             case nil:
                 titleText = "No usage data"
                 detailText = "Refresh to check again."

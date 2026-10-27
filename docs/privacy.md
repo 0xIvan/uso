@@ -18,16 +18,13 @@ No credentials or Codex history are bundled in the distributed app.
 OpenAI processes the authenticated usage request under its own policies.
 Uso is independent software, not affiliated with or endorsed by OpenAI.
 
-For Claude, Uso reads the existing Claude Code OAuth access and refresh tokens
+For Claude, Uso reads the existing Claude Code OAuth access token
 from the `Claude Code-credentials` macOS Keychain entry, or from
 `~/.claude/.credentials.json` when there is no Keychain entry. An inaccessible
 Keychain is treated as temporarily unavailable rather than using a stale file.
 It sends the access token to `https://api.anthropic.com/api/oauth/usage` to read
-subscription usage. When renewal is needed, it sends the refresh token to
-`https://platform.claude.com/v1/oauth/token` and saves returned tokens into the
-same credential store. It coordinates with Claude Code's refresh and storage
-write locks, preserves unrelated fields, and checks for a newer login or logout
-before saving. It does not perform inference requests. Anthropic processes these
+subscription usage. It never renews tokens or writes to the credential store;
+Claude Code renews its own login. It does not perform inference requests. Anthropic processes these
 requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
 The reset-notification preference and last successful reading for each provider

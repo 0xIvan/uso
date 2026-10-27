@@ -452,7 +452,7 @@ enum SelfCheck {
             let claudeNeedsLogin = failure.issue == .signInExpired
             guard text.filter({ $0 == "Log in again" }).count == (claudeNeedsLogin ? 2 : 1),
                   text.contains("Could not fetch Codex usage. Sign in to Codex, then refresh."),
-                  text.contains(claudeNeedsLogin ? "Could not fetch Claude usage. Run claude auth login, then refresh." : "Usage temporarily unavailable"),
+                  text.contains(claudeNeedsLogin ? "Could not fetch Claude usage. Open Claude Code to renew its sign-in, then refresh." : "Usage temporarily unavailable"),
                   !text.contains(where: { $0.contains("%") || $0.contains("Updated ") }) else { return false }
             for provider in UsageRing.allCases {
                 let limits = provider.limits(codex: presentation, claude: presentation)

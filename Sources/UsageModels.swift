@@ -120,7 +120,7 @@ enum UsageIssue: Error, Equatable {
     var title: String {
         switch self {
         case .signInExpired:
-            return "Claude sign-in expired — run claude auth login"
+            return "Claude sign-in expired — open Claude Code to renew"
         case .rateLimited:
             return "Claude rate limited — retrying in 5 minutes"
         case .notSignedIn:

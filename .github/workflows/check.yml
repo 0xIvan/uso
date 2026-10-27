@@ -19,11 +19,12 @@ jobs:
           bash -n tools/*.sh
           plutil -lint Info.plist
           git diff --check
+          # Claude Code owns token renewal; a second refresher invalidates its login.
+          ! grep -rn 'oauth/token' Sources
       - name: Build universal app and run self-checks
         run: |
           tools/build.sh
           tmp/Uso.app/Contents/MacOS/Uso --self-check
-          tools/check-claude-renewal.sh
           for arch in arm64 x86_64; do
             xcrun lipo tmp/Uso.app/Contents/MacOS/Uso -verify_arch "$arch"
           done

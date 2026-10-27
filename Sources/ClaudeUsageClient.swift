@@ -14,15 +14,12 @@ final class ClaudeUsageClient {
 
     func load() -> UsageLoadResult {
         do {
-            guard var credentials = try store.read() else {
+            guard let credentials = try store.read() else {
                 return UsageLoadResult(snapshot: nil, issue: .notSignedIn)
             }
-            if credentials.needsRefresh { credentials = try renew(credentials) }
-            var response = fetchUsage(token: credentials.accessToken)
-            if response.status == 401 {
-                credentials = try renew(credentials)
-                response = fetchUsage(token: credentials.accessToken)
-            }
+            // Claude Code rotates refresh tokens on use; renewing here would invalidate its login.
+            guard !credentials.isExpired else { throw UsageIssue.signInExpired }
+            let response = fetchUsage(token: credentials.accessToken)
             guard let status = response.status else { throw UsageIssue.unavailable }
             guard (200..<300).contains(status), let data = response.data, var snapshot = Self.decode(data) else {
                 throw Self.issue(for: status)
@@ -33,31 +30,6 @@ final class ClaudeUsageClient {
         } catch {
             return UsageLoadResult(snapshot: nil, issue: error as? UsageIssue ?? .unavailable)
         }
-    }
-
-    private func renew(_ original: ClaudeCredentials) throws -> ClaudeCredentials {
-        guard let locks = store.refreshLocks() else { throw UsageIssue.unavailable }
-        defer { withExtendedLifetime(locks) {} }
-        guard let current = try store.read() else { throw UsageIssue.notSignedIn }
-        if current.accessToken != original.accessToken || current.refreshToken != original.refreshToken { return current }
-        guard !current.refreshToken.isEmpty else { throw UsageIssue.signInExpired }
-        guard locks.allSatisfy({ $0.isOwned }) else { throw UsageIssue.unavailable }
-        var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "grant_type": "refresh_token", "refresh_token": current.refreshToken,
-            "client_id": current.oauth["clientId"] as? String ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-        ])
-        let response = send(request)
-        guard locks.allSatisfy({ $0.isOwned }) else { throw UsageIssue.unavailable }
-        guard let status = response.status else { throw UsageIssue.unavailable }
-        guard (200..<300).contains(status), let data = response.data,
-              let tokens = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            if let newer = try store.read(), newer.accessToken != current.accessToken { return newer }
-            throw status == 400 || status == 401 ? UsageIssue.signInExpired : Self.issue(for: status)
-        }
-        return try store.save(response: tokens, replacing: current, refreshLocks: locks)
     }
 
     private func fetchUsage(token: String) -> (status: Int?, data: Data?) {
