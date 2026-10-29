@@ -225,6 +225,11 @@ enum UsageFormatting {
         return "\(percent(pace.differencePercent)) ahead of pace"
     }
 
+    static func behindPace(_ pace: UsagePace) -> String? {
+        guard !pace.isOverPace else { return nil }
+        return "\(percent(max(-pace.differencePercent, 0))) behind pace"
+    }
+
     private static func formattedReset(_ resetAt: TimeInterval?, includeDate: Bool) -> String? {
         guard let date = resetDate(resetAt) else { return nil }
         let formatter = DateFormatter()

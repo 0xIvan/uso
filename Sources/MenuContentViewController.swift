@@ -246,19 +246,16 @@ final class MenuContentViewController: NSViewController {
         let paceBar = UsagePaceBarView(pace: pace, tintColor: tintColor)
         paceBar.widthAnchor.constraint(equalToConstant: width).isActive = true
 
-        let used = label(
-            "\(UsageFormatting.percent(pace.usedPercent)) used",
-            size: 9,
-            weight: .regular,
-            color: cardTertiaryColor
-        )
+        let behind = UsageFormatting.behindPace(pace).map {
+            label($0, size: 9, weight: .regular, color: cardTertiaryColor)
+        }
         let expected = label(
             "On pace \(UsageFormatting.percent(pace.expectedUsedPercent))",
             size: 9,
             weight: .regular,
             color: cardTertiaryColor
         )
-        let legend = NSStackView(views: [used, flexibleSpacer(), expected])
+        let legend = NSStackView(views: (behind.map { [$0] } ?? []) + [flexibleSpacer(), expected])
         legend.orientation = .horizontal
         legend.alignment = .centerY
         legend.widthAnchor.constraint(equalToConstant: width).isActive = true

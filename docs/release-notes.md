@@ -1,3 +1,5 @@
+Usage bars now show how far behind pace you are (for example "12% behind pace") instead of the percentage used.
+
 Claude usage keeps working when Claude Code's access token expires. Uso now runs a minimal Claude Code request (Haiku, no tools, no saved session, at most every 15 minutes) so Claude Code renews its own sign-in, instead of showing "sign-in expired" until you next use Claude Code in a terminal.
 
 Uso no longer renews Claude sign-ins itself. Renewing alongside Claude Code invalidated Claude Code's own login and forced repeated `claude /login`.
