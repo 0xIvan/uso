@@ -39,7 +39,8 @@ final class UsageResetChecker {
         if notify, comparable, let previous {
             for name in remaining.keys.sorted() {
                 if let before = previous.remaining[name], let limit = limits[name], limit.remaining > before {
-                    notices.append(UsageResetNotice(title: "\(provider.title) \(limit.label) limit reset!",
+                    let change = limit.remaining.rounded() >= 100 ? "reset" : "increased"
+                    notices.append(UsageResetNotice(title: "\(provider.title) \(limit.label) limit \(change)!",
                                                     body: "\(UsageFormatting.percent(before)) → \(UsageFormatting.percent(limit.remaining)) remaining."))
                 }
             }
