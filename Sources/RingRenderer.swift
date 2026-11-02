@@ -12,13 +12,27 @@ enum RingRenderer {
                 let bounds = CGRect(x: CGFloat(index) * 24, y: 0, width: 22, height: 22)
                 drawPair(limits: providerLimits, in: bounds)
                 if let icons, icons.indices.contains(index), let icon = icons[index] {
-                    icon.draw(in: CGRect(x: bounds.maxX - 10, y: bounds.minY, width: 10, height: 10), from: .zero, operation: .sourceOver, fraction: 1)
+                    drawBadge(icon, in: CGRect(x: bounds.maxX - 10, y: bounds.minY, width: 10, height: 10))
                 }
             }
             return true
         }
         image.isTemplate = false
         return image
+    }
+
+    private static func drawBadge(_ icon: NSImage, in rect: CGRect) {
+        guard icon.isTemplate else {
+            icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            return
+        }
+        let tinted = NSImage(size: rect.size, flipped: false) { bounds in
+            icon.draw(in: bounds)
+            NSColor.labelColor.set()
+            bounds.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private static func drawPair(limits: BaseLimits, in bounds: CGRect) {

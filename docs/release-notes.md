@@ -1,3 +1,5 @@
+Grok Bot and Cursor badges in the menu bar are now plain marks without an app-icon tile, matching Codex and Claude. They follow the menu bar's text color on light and dark menu bars. The Cursor badge now uses Cursor's current cube logo.
+
 Uso now shows Grok Bot and Cursor usage next to Codex and Claude. Turn each provider on or off in Settings. Grok Bot shows its weekly limit. Cursor shows its plan usage for the current billing cycle.
 
 Grok Bot's sign-in is encrypted with a Keychain password, so macOS asks whether Uso may read "Grok Bot Safe Storage". Choose **Always Allow** so macOS does not ask again on each launch. If you deny the prompt or leave it unanswered, Uso stops asking until you click Refresh.

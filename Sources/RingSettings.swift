@@ -31,7 +31,9 @@ enum UsageRing: String, CaseIterable {
         case .grok: resource = ("GrokBotLogo", "png")
         case .cursor: resource = ("CursorLogo", "png")
         }
-        return Bundle.main.url(forResource: resource.name, withExtension: resource.extension).flatMap(NSImage.init(contentsOf:))
+        let image = Bundle.main.url(forResource: resource.name, withExtension: resource.extension).flatMap(NSImage.init(contentsOf:))
+        image?.isTemplate = self == .grok || self == .cursor
+        return image
     }
 
     func limits(in presentations: [UsageRing: UsagePresentation]) -> BaseLimits {
