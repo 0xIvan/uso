@@ -5,8 +5,8 @@ final class MenuContentViewController: NSViewController {
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
 
-    private var presentation = UsagePresentation.loading
-    private var claudePresentation = UsagePresentation.loading
+    private var presentations = Dictionary(uniqueKeysWithValues: UsageRing.allCases.map { ($0, UsagePresentation.loading) })
+    private var enabled = UsageRing.allCases
     private let contentWidth: CGFloat = 288
     private let cardInset: CGFloat = 12
 
@@ -15,9 +15,9 @@ final class MenuContentViewController: NSViewController {
         rebuild()
     }
 
-    func update(_ presentation: UsagePresentation, claude: UsagePresentation = .loading) {
-        self.claudePresentation = claude
-        self.presentation = presentation
+    func update(_ presentations: [UsageRing: UsagePresentation], enabled: [UsageRing]) {
+        self.presentations = presentations
+        self.enabled = enabled
         guard isViewLoaded else {
             return
         }
@@ -50,40 +50,28 @@ final class MenuContentViewController: NSViewController {
 
         content.addArrangedSubview(headerView())
 
-        if presentation.hasSignIn {
-            if let header = content.arrangedSubviews.last { content.setCustomSpacing(18, after: header) }
-            let codexHeading = sectionLabel("Codex")
-            content.addArrangedSubview(codexHeading)
-            content.setCustomSpacing(8, after: codexHeading)
+        for provider in UsageRing.allCases {
+            guard let presentation = presentations[provider], presentation.hasSignIn else { continue }
+            if let previousSection = content.arrangedSubviews.last {
+                content.setCustomSpacing(provider == .codex ? 18 : 20, after: previousSection)
+            }
+            let heading = sectionLabel(provider.title)
+            content.addArrangedSubview(heading)
+            content.setCustomSpacing(8, after: heading)
             if let snapshot = presentation.snapshot, snapshot.hasAnyData {
-                addSnapshot(snapshot, to: content)
+                addSnapshot(snapshot, provider: provider, to: content)
             } else {
-                content.addArrangedSubview(emptyStateView(for: .codex, presentation: presentation))
+                content.addArrangedSubview(emptyStateView(for: provider, presentation: presentation))
             }
         }
 
-        if claudePresentation.hasSignIn {
-            if let previousSection = content.arrangedSubviews.last { content.setCustomSpacing(20, after: previousSection) }
-            let claudeHeading = sectionLabel("Claude")
-            content.addArrangedSubview(claudeHeading)
-            content.setCustomSpacing(8, after: claudeHeading)
-            if let snapshot = claudePresentation.snapshot, snapshot.hasAnyData {
-                if let issue = providerIssueText(claudePresentation) { content.addArrangedSubview(messageLabel(issue)) }
-                var rows: [NSView] = []
-                if let bucket = snapshot.baseLimits.fiveHour { rows.append(limitRow(role: .fiveHour, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
-                if let bucket = snapshot.baseLimits.weekly { rows.append(limitRow(role: .weekly, bucket: bucket, provider: .claude, width: contentWidth - cardInset * 2)) }
-                if !rows.isEmpty { content.addArrangedSubview(card(containing: rows)) }
-            } else {
-                content.addArrangedSubview(emptyStateView(for: .claude, presentation: claudePresentation))
-            }
-        }
-
-        if !presentation.hasSignIn && !claudePresentation.hasSignIn {
-            if isRefreshing {
+        if signedInPresentations.isEmpty {
+            if enabled.isEmpty {
+                content.addArrangedSubview(messageLabel("All providers are off. Turn one on in Settings."))
+            } else if isRefreshing {
                 content.addArrangedSubview(messageLabel("Checking signed-in providers…"))
             } else {
-                let rows = UsageRing.allCases.enumerated().map { signInRow($0.element, index: $0.offset) }
-                content.addArrangedSubview(card(containing: rows))
+                content.addArrangedSubview(card(containing: enabled.map(signInRow)))
             }
         }
 
@@ -96,25 +84,29 @@ final class MenuContentViewController: NSViewController {
         view.frame.size = preferredContentSize
     }
 
+    private var signedInPresentations: [UsagePresentation] {
+        UsageRing.allCases.compactMap { presentations[$0] }.filter(\.hasSignIn)
+    }
+
     private var headerSnapshot: UsageSnapshot? {
-        [presentation, claudePresentation].filter(\.hasSignIn)
+        signedInPresentations
             .compactMap(\.snapshot).filter(\.hasAnyData)
             .max { $0.updatedAt < $1.updatedAt }
     }
 
     private var isRefreshing: Bool {
-        presentation.isRefreshing || claudePresentation.isRefreshing
+        presentations.values.contains(where: \.isRefreshing)
     }
 
     private var hasLiveSnapshot: Bool {
-        [presentation, claudePresentation].contains {
-            $0.hasSignIn && $0.snapshot?.source == .live && $0.snapshot?.hasAnyData == true
+        signedInPresentations.contains {
+            $0.snapshot?.source == .live && $0.snapshot?.hasAnyData == true
         }
     }
 
-    private func providerIssueText(_ presentation: UsagePresentation) -> String? {
+    private func providerIssueText(_ presentation: UsagePresentation, provider: UsageRing) -> String? {
         guard let issue = presentation.issue else { return nil }
-        return issue == .offlineCached && !hasLiveSnapshot ? nil : issue.title
+        return issue == .offlineCached && !hasLiveSnapshot ? nil : issue.title(for: provider)
     }
 
     private func headerView() -> NSView {
@@ -156,8 +148,8 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
-    private func addSnapshot(_ snapshot: UsageSnapshot, to content: NSStackView) {
-        if let issue = providerIssueText(presentation) {
+    private func addSnapshot(_ snapshot: UsageSnapshot, provider: UsageRing, to content: NSStackView) {
+        if let issue = presentations[provider].flatMap({ providerIssueText($0, provider: provider) }) {
             content.addArrangedSubview(messageLabel(issue))
         }
 
@@ -166,6 +158,7 @@ final class MenuContentViewController: NSViewController {
             baseRows.append(limitRow(
                 role: .fiveHour,
                 bucket: fiveHour,
+                provider: provider,
                 width: contentWidth - (cardInset * 2)
             ))
         }
@@ -173,10 +166,11 @@ final class MenuContentViewController: NSViewController {
             baseRows.append(limitRow(
                 role: .weekly,
                 bucket: weekly,
+                provider: provider,
                 width: contentWidth - (cardInset * 2)
             ))
         }
-        if let count = snapshot.availableResetCount {
+        if provider == .codex, let count = snapshot.availableResetCount {
             baseRows.append(resetCountRow(count, resets: snapshot.availableResets))
         }
         if !baseRows.isEmpty {
@@ -184,7 +178,7 @@ final class MenuContentViewController: NSViewController {
         }
 
         let additionalLimits = MenuLimitFilter.visibleAdditionalLimits(snapshot.additionalLimits)
-        guard !additionalLimits.isEmpty else {
+        guard provider == .codex, !additionalLimits.isEmpty else {
             return
         }
         content.addArrangedSubview(sectionLabel("Additional limits"))
@@ -194,7 +188,7 @@ final class MenuContentViewController: NSViewController {
         content.addArrangedSubview(card(containing: rows, spacing: 9))
     }
 
-    private func limitRow(role: BaseLimitRole, bucket: LimitBucket, provider: UsageRing = .codex, width: CGFloat) -> NSView {
+    private func limitRow(role: BaseLimitRole, bucket: LimitBucket, provider: UsageRing, width: CGFloat) -> NSView {
         let resetText: String
         switch role {
         case .fiveHour:
@@ -204,7 +198,7 @@ final class MenuContentViewController: NSViewController {
         }
 
         let exhausted = bucket.remainingPercent <= 0
-        let nameLabel = label(role.title, size: 13, weight: .semibold, color: .labelColor)
+        let nameLabel = label(role.title(for: bucket), size: 13, weight: .semibold, color: .labelColor)
         let resetLabel = label(resetText, size: 11, weight: .regular, color: cardSecondaryColor)
         let textStack = NSStackView(views: [nameLabel] + (exhausted ? [] : [resetLabel]))
         textStack.orientation = .vertical
@@ -343,18 +337,18 @@ final class MenuContentViewController: NSViewController {
             case .noData:
                 titleText = "No usage data"
                 detailText = "\(provider.title) did not report any recognized limits."
-            case .unavailable where provider == .claude,
-                 .offlineCached where provider == .claude,
-                 .rateLimited where provider == .claude:
+            case .unavailable where provider != .codex,
+                 .offlineCached where provider != .codex,
+                 .rateLimited where provider != .codex:
                 titleText = "Usage temporarily unavailable"
                 detailText = presentation.issue == .rateLimited
-                    ? "Claude rate limited the request. Uso will retry in five minutes."
+                    ? "\(provider.title) rate limited the request. Uso will retry in five minutes."
                     : "Uso will retry automatically. You can also click Refresh."
             case .unavailable, .offlineCached, .signInExpired, .rateLimited:
                 titleText = "Log in again"
                 detailText = provider == .codex
                     ? "Could not fetch Codex usage. Sign in to Codex, then refresh."
-                    : "Could not fetch Claude usage. Open Claude Code to renew its sign-in, then refresh."
+                    : "Could not fetch \(provider.title) usage. Open \(provider.appName) to renew its sign-in, then refresh."
             case nil:
                 titleText = "No usage data"
                 detailText = "Refresh to check again."
@@ -387,19 +381,20 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
-    private func signInRow(_ provider: UsageRing, index: Int) -> NSView {
-        let copy = actionButton(title: "Copy command", symbol: nil, action: #selector(copyLoginCommand(_:)))
-        copy.tag = index
-        copy.setAccessibilityLabel("Copy \(provider.title) login command")
-        copy.setContentHuggingPriority(.required, for: .horizontal)
-        copy.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let text = NSTextField(wrappingLabelWithString: "\(provider.title): run \(provider.loginCommand)")
+    private func signInRow(_ provider: UsageRing) -> NSView {
+        let copy = provider.loginCommand.map { _ in actionButton(title: "Copy command", symbol: nil, action: #selector(copyLoginCommand(_:))) }
+        copy?.tag = UsageRing.allCases.firstIndex(of: provider) ?? 0
+        copy?.setAccessibilityLabel("Copy \(provider.title) login command")
+        copy?.setContentHuggingPriority(.required, for: .horizontal)
+        copy?.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let instruction = provider.loginCommand.map { "run \($0)" } ?? "open \(provider.appName) and sign in"
+        let text = NSTextField(wrappingLabelWithString: "\(provider.title): \(instruction)")
         text.font = .systemFont(ofSize: 11)
         text.textColor = cardSecondaryColor
-        text.preferredMaxLayoutWidth = contentWidth - cardInset * 2 - copy.fittingSize.width - 8
+        text.preferredMaxLayoutWidth = contentWidth - cardInset * 2 - (copy.map { $0.fittingSize.width + 8 } ?? 0)
         text.widthAnchor.constraint(equalToConstant: text.preferredMaxLayoutWidth).isActive = true
         text.setContentCompressionResistancePriority(.required, for: .vertical)
-        let row = NSStackView(views: [text, copy])
+        let row = NSStackView(views: [text] + (copy.map { [$0] } ?? []))
         row.alignment = .centerY
         row.spacing = 8
         row.widthAnchor.constraint(equalToConstant: contentWidth - cardInset * 2).isActive = true
@@ -475,14 +470,14 @@ final class MenuContentViewController: NSViewController {
     }
 
     private func statusBadge() -> NSView? {
-        let providers = [presentation, claudePresentation]
+        let providers = Array(presentations.values)
         if hasLiveSnapshot { return nil }
         let text: String
         let color: NSColor
         if headerSnapshot != nil {
             text = "Cached"
             color = .systemOrange
-        } else if isRefreshing {
+        } else if isRefreshing || enabled.isEmpty {
             return nil
         } else if !providers.contains(where: \.hasSignIn) {
             text = "No sign-in"
@@ -569,8 +564,9 @@ final class MenuContentViewController: NSViewController {
 
     @objc private func copyLoginCommand(_ sender: NSButton) {
         let provider = UsageRing.allCases[sender.tag]
+        guard let command = provider.loginCommand else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(provider.loginCommand, forType: .string)
+        NSPasteboard.general.setString(command, forType: .string)
         sender.title = "Copied"
         sender.setAccessibilityLabel("\(provider.title) login command copied")
     }

@@ -6,11 +6,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let showsSettings: Bool
     private let client: UsageClient
     private let claudeClient = ClaudeUsageClient()
+    private let grokClient = GrokUsageClient()
+    private let cursorClient = CursorUsageClient()
     private let settings = RingSettings()
     private let resetNotifications = ResetNotifications()
     private lazy var settingsController = SettingsWindowController(settings: settings)
-    private var claudePresentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
-    private var lastClaudeRefresh = Date.distantPast
+    private var lastRefresh: [UsageRing: Date] = [:]
     private let workerQueue = DispatchQueue(label: "com.ivan.uso.refresh", qos: .utility)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
@@ -21,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appearanceObservation: NSKeyValueObservation?
     private let updaterController = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
     private var updaterObservation: NSKeyValueObservation?
-    private var presentation = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
+    private var presentations = Dictionary(uniqueKeysWithValues: UsageRing.allCases.map { ($0, UsagePresentation.notLoaded) })
 
     init(codexHome: URL, showsSettings: Bool = false) {
         self.showsSettings = showsSettings
@@ -51,11 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterController.startUpdater()
         if showsSettings { settingsController.present() }
         wakeObservation = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.refresh(forceClaude: true)
+            self?.refresh(.wake)
         }
-        refresh()
+        refresh(.scheduled)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            self?.refresh()
+            self?.refresh(.scheduled)
         }
     }
 
@@ -98,14 +99,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
 
         menuController.onRefresh = { [weak self] in
-            self?.refresh(forceClaude: true)
+            self?.refresh(.menu)
         }
         menuController.onSettings = { [weak self] in
             guard let self else { return }
             self.menu.cancelTracking()
             self.settingsController.present()
         }
-        settingsController.onChange = { [weak self] in self?.updateInterface() }
+        settingsController.onChange = { [weak self] in self?.settingsDidChange() }
         settingsController.onCheckForUpdates = { [weak self] in
             guard let self, self.updaterController.updater.canCheckForUpdates else { return }
             self.updaterController.checkForUpdates(nil)
@@ -113,62 +114,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuController.onQuit = {
             NSApp.terminate(nil)
         }
-        menuController.update(presentation)
+        menuController.update(presentations, enabled: settings.enabled)
     }
 
-    private func refresh(forceClaude: Bool = false) {
-        guard !presentation.isRefreshing, !claudePresentation.isRefreshing else {
-            return
+    private func settingsDidChange() {
+        let enabled = settings.enabled
+        for provider in UsageRing.allCases where !enabled.contains(provider) {
+            presentations[provider] = .notLoaded
         }
-        presentation.isRefreshing = true
-        let refreshClaude = Date().timeIntervalSince(lastClaudeRefresh) >= 300
-            || (forceClaude && claudePresentation.issue != .rateLimited)
-        if refreshClaude {
-            claudePresentation.isRefreshing = true
-            lastClaudeRefresh = Date()
+        refresh(.settingsChanged)
+    }
+
+    private func refresh(_ trigger: RefreshTrigger) {
+        let due = trigger.due(enabled: settings.enabled, presentations: presentations, lastRefresh: lastRefresh, now: Date())
+        for provider in due {
+            presentations[provider]?.isRefreshing = true
+            lastRefresh[provider] = Date()
         }
         updateInterface()
 
         workerQueue.async { [weak self] in
-            guard let self else {
-                return
-            }
-            let result = self.client.load()
-            DispatchQueue.main.async { [weak self] in
-                self?.apply(result)
-            }
-            if refreshClaude {
-                let claudeResult = self.claudeClient.load()
+            for provider in due {
+                guard let self else { return }
+                guard self.settings.enabled.contains(provider) else { continue }
+                let result = self.load(provider, trigger: trigger)
                 DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.claudePresentation = UsageSnapshotPolicy.resolve(result: claudeResult)
+                    guard let self, self.settings.enabled.contains(provider) else { return }
+                    self.presentations[provider] = UsageSnapshotPolicy.resolve(result: result)
                     self.updateInterface()
                 }
             }
         }
     }
 
-    private func apply(_ result: UsageLoadResult) {
-        presentation = UsageSnapshotPolicy.resolve(result: result)
-        updateInterface()
+    private func load(_ provider: UsageRing, trigger: RefreshTrigger) -> UsageLoadResult {
+        switch provider {
+        case .codex: return client.load()
+        case .claude: return claudeClient.load()
+        case .grok: return grokClient.load(retryingDeclinedKeychain: trigger.retriesDeclinedKeychain)
+        case .cursor: return cursorClient.load()
+        }
     }
 
     private func updateInterface() {
         precondition(Thread.isMainThread)
-        resetNotifications.synchronize(settings: settings, codex: presentation, claude: claudePresentation)
-        let rings = settings.visible(codex: presentation, claude: claudePresentation)
-        let image = RingRenderer.statusImage(limits: rings.map { $0.limits(codex: presentation, claude: claudePresentation) }, icons: rings.map(\.icon))
+        resetNotifications.synchronize(settings: settings, presentations: presentations)
+        let rings = settings.visible(presentations)
+        let image = RingRenderer.statusImage(limits: rings.map { $0.limits(in: presentations) }, icons: rings.map(\.icon))
         statusItem.length = image.size.width
         statusItem.button?.image = image
         statusItem.button?.toolTip = tooltipText()
         statusItem.button?.setAccessibilityLabel("Uso usage")
-        menuController.update(presentation, claude: claudePresentation)
+        menuController.update(presentations, enabled: settings.enabled)
     }
 
     private func tooltipText() -> String {
         var lines = ["Uso"]
-        for ring in settings.visible(codex: presentation, claude: claudePresentation) {
-            let limits = ring.limits(codex: presentation, claude: claudePresentation)
+        for ring in settings.visible(presentations) {
+            let limits = ring.limits(in: presentations)
             for (role, bucket) in [(BaseLimitRole.fiveHour, limits.fiveHour), (.weekly, limits.weekly)] {
                 guard let bucket else { continue }
                 let detail: String
@@ -178,14 +181,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : UsagePaceCalculator.calculate(bucket: bucket).flatMap(UsageFormatting.paceStatus)
                     detail = "\(UsageFormatting.percent(bucket.remainingPercent)) remaining" + (pace.map { " · \($0)" } ?? "")
                 }
-                lines.append("\(ring.title) \(role.title): \(detail)")
+                lines.append("\(ring.title) \(role.title(for: bucket)): \(detail)")
             }
         }
 
-        for (name, value) in [("Codex", presentation), ("Claude", claudePresentation)] {
-            guard value.hasSignIn else { continue }
-            if let issue = value.issue { lines.append("\(name): \(issue.title)") }
-            if let snapshot = value.snapshot { lines.append("\(name): \(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))") }
+        for provider in UsageRing.allCases {
+            guard let value = presentations[provider], value.hasSignIn else { continue }
+            if let issue = value.issue { lines.append("\(provider.title): \(issue.title(for: provider))") }
+            if let snapshot = value.snapshot { lines.append("\(provider.title): \(snapshot.source.rawValue) · Updated \(UsageFormatting.updated(snapshot.updatedAt))") }
         }
         return lines.joined(separator: "\n")
     }

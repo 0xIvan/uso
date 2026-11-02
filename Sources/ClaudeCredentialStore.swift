@@ -45,7 +45,7 @@ final class ClaudeCredentialStore {
 
     func read() throws -> ClaudeCredentials? {
         if usesKeychain {
-            let result = security(["find-generic-password", "-s", "Claude Code-credentials", "-a", NSUserName(), "-w"])
+            let result = SecurityCommand.run(["find-generic-password", "-s", "Claude Code-credentials", "-a", NSUserName(), "-w"])
             if result.status == 0 { return try decode(result.data) }
             // Locked/denied Keychain access must not resurrect an obsolete file login.
             guard result.status == 44 else { throw UsageIssue.unavailable }
@@ -72,8 +72,10 @@ final class ClaudeCredentialStore {
         guard ClaudeUsageClient.token(from: data) != nil else { return nil }
         return ClaudeCredentials(document: document)
     }
+}
 
-    private func security(_ arguments: [String]) -> (status: Int32, data: Data) {
+enum SecurityCommand {
+    static func run(_ arguments: [String], timeout: TimeInterval = 5) -> (status: Int32, data: Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = arguments
@@ -92,7 +94,7 @@ final class ClaudeCredentialStore {
             result.data = output.fileHandleForReading.readDataToEndOfFile()
             drained.signal()
         }
-        guard completion.wait(timeout: .now() + 5) == .success else {
+        guard completion.wait(timeout: .now() + timeout) == .success else {
             process.terminate()
             return (-1, Data())
         }

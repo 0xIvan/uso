@@ -28,8 +28,10 @@ final class UsageResetChecker {
         let sameAccount = previous?.accountIdentifier == accountIdentifier
         let comparable = sameAccount && previous?.planType == snapshot.planType
         var limits: [String: (label: String, remaining: Double)] = [:]
-        for (name, label, bucket) in [("5-hour", "5h", snapshot.baseLimits.fiveHour), ("weekly", "weekly", snapshot.baseLimits.weekly)] {
-            if let bucket, bucket.usedPercent.isFinite { limits[name] = (label, bucket.remainingPercent) }
+        for (name, label, bucket) in [("5-hour", "5h", snapshot.baseLimits.fiveHour), ("weekly", nil, snapshot.baseLimits.weekly)] {
+            if let bucket, bucket.usedPercent.isFinite {
+                limits[name] = (label ?? BaseLimitRole.weekly.title(for: bucket).lowercased(), bucket.remainingPercent)
+            }
         }
         for limit in MenuLimitFilter.visibleAdditionalLimits(snapshot.additionalLimits) where limit.bucket.usedPercent.isFinite {
             limits["\(limit.name) limit"] = (limit.name, limit.bucket.remainingPercent)
@@ -100,9 +102,9 @@ final class ResetNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func synchronize(settings: RingSettings, codex: UsagePresentation, claude: UsagePresentation) {
+    func synchronize(settings: RingSettings, presentations: [UsageRing: UsagePresentation]) {
         precondition(Thread.isMainThread)
-        presentations = [.codex: codex, .claude: claude]
+        self.presentations = presentations
         generation += 1
         let revision = generation
         for provider in UsageRing.allCases {
@@ -134,8 +136,7 @@ final class ResetNotifications: NSObject, UNUserNotificationCenterDelegate {
                                 self.onStatusChange?("Couldn’t enable notifications: \(error.localizedDescription)")
                                 return
                             }
-                            self.synchronize(settings: settings, codex: self.presentations[.codex] ?? .loading,
-                                             claude: self.presentations[.claude] ?? .loading)
+                            self.synchronize(settings: settings, presentations: self.presentations)
                         }
                     }
                 case .denied:
