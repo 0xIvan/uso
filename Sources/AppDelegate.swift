@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let client: UsageClient
     private let claudeClient = ClaudeUsageClient()
     private let grokClient = GrokUsageClient()
+    private let cursorClient = CursorUsageClient()
     private let settings = RingSettings()
     private let resetNotifications = ResetNotifications()
     private lazy var settingsController = SettingsWindowController(settings: settings)
@@ -152,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .codex: return client.load()
         case .claude: return claudeClient.load()
         case .grok: return grokClient.load()
+        case .cursor: return cursorClient.load()
         }
     }
 
@@ -180,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let pace = ring.hasUnstartedWindow(bucket) ? "Window not started" : UsagePaceCalculator.calculate(bucket: bucket).flatMap(UsageFormatting.paceStatus)
                     detail = "\(UsageFormatting.percent(bucket.remainingPercent)) remaining" + (pace.map { " · \($0)" } ?? "")
                 }
-                lines.append("\(ring.title) \(role.title): \(detail)")
+                lines.append("\(ring.title) \(role.title(for: bucket)): \(detail)")
             }
         }
 

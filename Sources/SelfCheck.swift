@@ -11,6 +11,7 @@ enum SelfCheck {
             ("exhausted providers show a red exclamation instead of rings", checkExhaustedRendering),
             ("Claude windows, ISO timestamps, null and malformed data", checkClaudeDecoding),
             ("Grok Bot weekly window, stored token formats and malformed data", checkGrokDecoding),
+            ("Cursor monthly window, percent fallback and malformed data", checkCursorDecoding),
             ("ring selection persists and allows all rings off", checkRingSelection),
             ("side-by-side ring dimensions and unavailable fallback", checkRingLayout),
             ("usage and reset requests select the signed-in account", checkAccountSelection),
@@ -196,6 +197,22 @@ enum SelfCheck {
             && GrokUsageClient.storedAccessToken(from: Data("{}".utf8)) == nil
     }
 
+    private static func checkCursorDecoding() -> Bool {
+        let usage = #"{"billingCycleStart":"1793750400000","billingCycleEnd":"1796428800000","planUsage":{"includedSpend":1500,"limit":2000,"totalPercentUsed":90}}"#
+        let monthly = CursorUsageClient.decode(Data(usage.utf8))?.baseLimits.weekly
+        let percentOnly = CursorUsageClient.decode(Data(#"{"planUsage":{"totalPercentUsed":40}}"#.utf8))?.baseLimits.weekly
+        let weekly = LimitBucket(usedPercent: 0, windowMinutes: 10_080, resetAt: nil)
+        return monthly?.remainingPercent == 25
+            && monthly?.windowMinutes == 44_640
+            && monthly?.resetAt == 1_796_428_800
+            && monthly.map(BaseLimitRole.weekly.title(for:)) == "Monthly"
+            && BaseLimitRole.weekly.title(for: weekly) == "Weekly"
+            && percentOnly?.remainingPercent == 60
+            && percentOnly?.windowMinutes == nil
+            && CursorUsageClient.decode(Data("{}".utf8))?.hasAnyData == false
+            && CursorUsageClient.decode(Data("[]".utf8)) == nil
+    }
+
     private static func checkRingSelection() -> Bool {
         let name = "uso-self-check-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: name) else { return false }
@@ -215,7 +232,7 @@ enum SelfCheck {
         guard RingSettings(defaults: defaults).enabled == [.codex, .claude] else { return false }
         defaults.removeObject(forKey: "knownUsageProviders")
         defaults.set(["claude"], forKey: "enabledUsageProviders")
-        return settings.enabled == [.claude, .grok] && RingSettings(defaults: defaults).enabled == [.claude, .grok]
+        return settings.enabled == [.claude, .grok, .cursor] && RingSettings(defaults: defaults).enabled == [.claude, .grok, .cursor]
     }
 
     private static func checkRingLayout() -> Bool {

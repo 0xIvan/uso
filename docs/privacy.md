@@ -39,6 +39,15 @@ decrypt the token. It sends the token to
 weekly usage. It never renews the token or writes to Grok Bot's files; when the
 token has expired, open Grok Bot so it renews its own sign-in. The Grok Bot
 service processes these requests under its own policies.
+
+For Cursor, Uso reads the access token the Cursor app saved under
+`cursorAuth/accessToken` in
+`~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`, opening
+that database read-only. It sends the token to
+`https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage` to
+read plan usage for the current billing cycle. It never renews the token or
+writes to Cursor's files; when the token has expired, open Cursor so it renews
+its own sign-in. Cursor processes these requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
 The reset-notification preference and last successful reading for each provider
 are also saved locally in UserDefaults. Claude account/organization identifiers
@@ -54,7 +63,7 @@ When you choose Check for Updates…, Sparkle requests the signed update feed an
 if you choose to install, the update archive from GitHub's release asset service.
 Requests may follow GitHub's redirects to its asset CDN. GitHub receives normal
 network request information such as your IP address and Uso's version/User-Agent.
-Codex, Claude, and Grok Bot credentials are never sent with update requests. Background
+Codex, Claude, Grok Bot, and Cursor credentials are never sent with update requests. Background
 update checks, unattended installation, and Sparkle system profiling are disabled.
 Sparkle stores downloaded update data temporarily and verifies the signed feed,
 archive signature, and application signature before installation.

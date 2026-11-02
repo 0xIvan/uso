@@ -33,6 +33,7 @@ enum UsoMain {
             .codex: UsageClient(codexHome: codexHome).load(),
             .claude: ClaudeUsageClient().load(),
             .grok: GrokUsageClient().load(),
+            .cursor: CursorUsageClient().load(),
         ]
         let presentations = results.mapValues(UsageSnapshotPolicy.resolve(result:))
         let rings = RingSettings().visible(presentations)

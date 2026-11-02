@@ -127,11 +127,11 @@ final class GrokUsageClient {
         return Data(base64Encoded: payload).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     }
 
-    private static func expiry(of token: String) -> Date? {
+    static func expiry(of token: String) -> Date? {
         (claims(of: token)?["exp"] as? Double).map(Date.init(timeIntervalSince1970:))
     }
 
-    private static func subject(of token: String) -> String? {
+    static func subject(of token: String) -> String? {
         claims(of: token)?["sub"] as? String
     }
 

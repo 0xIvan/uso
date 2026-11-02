@@ -28,8 +28,10 @@ final class UsageResetChecker {
         let sameAccount = previous?.accountIdentifier == accountIdentifier
         let comparable = sameAccount && previous?.planType == snapshot.planType
         var limits: [String: (label: String, remaining: Double)] = [:]
-        for (name, label, bucket) in [("5-hour", "5h", snapshot.baseLimits.fiveHour), ("weekly", "weekly", snapshot.baseLimits.weekly)] {
-            if let bucket, bucket.usedPercent.isFinite { limits[name] = (label, bucket.remainingPercent) }
+        for (name, label, bucket) in [("5-hour", "5h", snapshot.baseLimits.fiveHour), ("weekly", nil, snapshot.baseLimits.weekly)] {
+            if let bucket, bucket.usedPercent.isFinite {
+                limits[name] = (label ?? BaseLimitRole.weekly.title(for: bucket).lowercased(), bucket.remainingPercent)
+            }
         }
         for limit in MenuLimitFilter.visibleAdditionalLimits(snapshot.additionalLimits) where limit.bucket.usedPercent.isFinite {
             limits["\(limit.name) limit"] = (limit.name, limit.bucket.remainingPercent)

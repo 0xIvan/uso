@@ -1,6 +1,7 @@
 Uso
 
-A menu bar utility for viewing remaining Codex, Claude, and Grok Bot subscription usage.
+A menu bar utility for viewing remaining Codex, Claude, Grok Bot, and Cursor
+subscription usage.
 Independent software; not affiliated with or endorsed by OpenAI.
 
 REQUIREMENTS
@@ -10,8 +11,9 @@ A local Codex sign-in with a ChatGPT account and readable credentials in
 not supported for Codex. Claude requires a Claude Code subscription sign-in.
 Grok Bot requires the Grok Bot desktop app to be signed in; macOS asks once
 to allow Keychain access to "Grok Bot Safe Storage".
-Uso reads Codex, Claude, and Grok Bot credentials without modifying them.
-Claude Code and Grok Bot renew their own sign-ins.
+Cursor requires the Cursor app to be signed in.
+Uso reads Codex, Claude, Grok Bot, and Cursor credentials without modifying
+them. Claude Code, Grok Bot, and Cursor renew their own sign-ins.
 
 INSTALL
 1. Open the DMG and drag Uso into Applications.

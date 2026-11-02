@@ -137,4 +137,8 @@ enum BaseLimitRole {
     case weekly
 
     var title: String { self == .fiveHour ? "5-hour" : "Weekly" }
+
+    func title(for bucket: LimitBucket) -> String {
+        self == .weekly && bucket.windowMinutes ?? 0 >= 40_320 ? "Monthly" : title
+    }
 }

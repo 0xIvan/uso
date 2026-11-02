@@ -2,13 +2,14 @@ import AppKit
 import ServiceManagement
 
 enum UsageRing: String, CaseIterable {
-    case codex, claude, grok
+    case codex, claude, grok, cursor
 
     var title: String {
         switch self {
         case .codex: return "Codex"
         case .claude: return "Claude"
         case .grok: return "Grok Bot"
+        case .cursor: return "Cursor"
         }
     }
 
@@ -18,7 +19,7 @@ enum UsageRing: String, CaseIterable {
         switch self {
         case .codex: return "codex login"
         case .claude: return "claude auth login"
-        case .grok: return nil
+        case .grok, .cursor: return nil
         }
     }
 
@@ -28,6 +29,7 @@ enum UsageRing: String, CaseIterable {
         case .codex: resource = ("CodexLogo", "png")
         case .claude: resource = ("ClaudeLogo", "svg")
         case .grok: resource = ("GrokBotLogo", "png")
+        case .cursor: resource = ("CursorLogo", "png")
         }
         return Bundle.main.url(forResource: resource.name, withExtension: resource.extension).flatMap(NSImage.init(contentsOf:))
     }

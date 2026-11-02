@@ -195,7 +195,7 @@ final class MenuContentViewController: NSViewController {
         }
 
         let exhausted = bucket.remainingPercent <= 0
-        let nameLabel = label(role.title, size: 13, weight: .semibold, color: .labelColor)
+        let nameLabel = label(role.title(for: bucket), size: 13, weight: .semibold, color: .labelColor)
         let resetLabel = label(resetText, size: 11, weight: .regular, color: cardSecondaryColor)
         let textStack = NSStackView(views: [nameLabel] + (exhausted ? [] : [resetLabel]))
         textStack.orientation = .vertical
