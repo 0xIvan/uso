@@ -100,9 +100,9 @@ final class ResetNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func synchronize(settings: RingSettings, codex: UsagePresentation, claude: UsagePresentation) {
+    func synchronize(settings: RingSettings, presentations: [UsageRing: UsagePresentation]) {
         precondition(Thread.isMainThread)
-        presentations = [.codex: codex, .claude: claude]
+        self.presentations = presentations
         generation += 1
         let revision = generation
         for provider in UsageRing.allCases {
@@ -134,8 +134,7 @@ final class ResetNotifications: NSObject, UNUserNotificationCenterDelegate {
                                 self.onStatusChange?("Couldn’t enable notifications: \(error.localizedDescription)")
                                 return
                             }
-                            self.synchronize(settings: settings, codex: self.presentations[.codex] ?? .loading,
-                                             claude: self.presentations[.claude] ?? .loading)
+                            self.synchronize(settings: settings, presentations: self.presentations)
                         }
                     }
                 case .denied:

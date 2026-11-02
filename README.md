@@ -2,7 +2,7 @@
 
 App name: **Uso**. Repository name: `uso`.
 
-A native macOS menu bar utility showing remaining Codex and Claude subscription usage. Choose Codex and Claude in Settings. Each provider has one icon with weekly usage on the outer ring and 5-hour usage on the inner ring. Only reported limits appear: accounts without a 5-hour limit show no inner ring. Enabled providers appear side by side. Independent software, not affiliated with OpenAI or Anthropic.
+A native macOS menu bar utility showing remaining Codex, Claude, and Grok Bot subscription usage. Choose providers in Settings. Each provider has one icon with weekly usage on the outer ring and 5-hour usage on the inner ring. Only reported limits appear: accounts without a 5-hour limit show no inner ring. Enabled providers appear side by side. Independent software, not affiliated with OpenAI or Anthropic.
 
 All rings use the same pace calculation: usage compared with the elapsed portion of its window. Green means on or under pace (with a 0.5-point tolerance), yellow warns up to 5 percentage points over pace, and red means more than 5 points over pace. When either usage limit reaches 0% remaining, that provider's rings become a red exclamation mark. Gray means pace is unavailable for a reported limit. With all rings disabled, a small “u” button keeps Settings accessible. Choices persist between launches.
 
@@ -62,6 +62,8 @@ When resets may be available, Uso also reads `/backend-api/wham/rate-limit-reset
 `UsageDecoder.swift` maps durations to five-hour and weekly buckets. `RingRenderer.swift` shares artwork between the menu bar and preview. `AppDelegate.swift` performs requests off the main thread and updates AppKit on the main thread.
 
 Claude usage is read from `https://api.anthropic.com/api/oauth/usage` using the existing Claude Code OAuth access token. Claude refreshes every five minutes, when Refresh is clicked, and after the Mac wakes. Uso never renews Claude tokens: Claude Code rotates its refresh token on every renewal, so a second refresher invalidates Claude Code's login. When the access token has expired or is rejected, Uso runs a minimal Claude Code request (`claude -p --safe-mode --no-session-persistence --tools "" --model haiku`, at most every 15 minutes) so Claude Code renews its own login, then reads the new token. If Claude Code cannot be found or the request fails, Uso asks you to open Claude Code. Keychain takes precedence over the legacy file. Both providers' credentials are read-only. Tokens are never logged. Temporary network and rate-limit failures retry without instructing you to log in again. Rate-limited requests wait five minutes before retrying. These upstream interfaces may change.
+
+Grok Bot weekly usage is read from `https://api2.cursor.sh/aiserver.v1.DashboardService/GetSandUsageStatus` using the access token the Grok Bot desktop app stores in `~/Library/Application Support/Grok Bot/sand-secrets.json`, decrypted with its `Grok Bot Safe Storage` Keychain password (macOS asks once). Grok Bot reports a single weekly limit, so it shows only an outer ring. Uso never renews Grok Bot tokens; when one expires, open Grok Bot. It refreshes on the same schedule as Claude.
 
 ## Claude integration status
 

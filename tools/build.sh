@@ -36,6 +36,7 @@ cp "${ROOT_DIR}/Info.plist" "${CONTENTS_PATH}/Info.plist"
 cp "${ROOT_DIR}/Resources/AppIcon.icns" "${RESOURCES_PATH}/AppIcon.icns"
 cp "${ROOT_DIR}/Resources/CodexLogo.png" "${RESOURCES_PATH}/CodexLogo.png"
 cp "${ROOT_DIR}/Resources/ClaudeLogo.svg" "${RESOURCES_PATH}/ClaudeLogo.svg"
+cp "${ROOT_DIR}/Resources/GrokBotLogo.png" "${RESOURCES_PATH}/GrokBotLogo.png"
 cp "${ROOT_DIR}/Resources/AppIcon-light.png" "${RESOURCES_PATH}/AppIcon-light.png"
 cp "${ROOT_DIR}/Resources/AppIcon-dark.png" "${RESOURCES_PATH}/AppIcon-dark.png"
 xcrun actool "${ROOT_DIR}/Resources/AppIcon.xcassets" \

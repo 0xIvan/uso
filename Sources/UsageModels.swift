@@ -117,12 +117,12 @@ enum UsageIssue: Error, Equatable {
     case unavailable
     case offlineCached
 
-    var title: String {
+    func title(for provider: UsageRing) -> String {
         switch self {
         case .signInExpired:
-            return "Claude sign-in expired — open Claude Code to renew"
+            return "\(provider.title) sign-in expired — open \(provider.appName) to renew"
         case .rateLimited:
-            return "Claude rate limited — retrying in 5 minutes"
+            return "\(provider.title) rate limited — retrying in 5 minutes"
         case .notSignedIn:
             return "Not signed in"
         case .noData:

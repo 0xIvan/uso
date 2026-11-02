@@ -29,6 +29,16 @@ When the access token has expired or is rejected, Uso runs Claude Code once
 own login; this is a minimal inference request on your subscription, made at
 most every 15 minutes and only while the token is expired. Anthropic processes
 these requests under its own policies.
+
+For Grok Bot, Uso reads the access token the Grok Bot desktop app saved in
+`~/Library/Application Support/Grok Bot/sand-secrets.json`. That token is
+encrypted with Grok Bot's `Grok Bot Safe Storage` Keychain password, which Uso
+reads (macOS asks for permission the first time) and keeps only in memory to
+decrypt the token. It sends the token to
+`https://api2.cursor.sh/aiserver.v1.DashboardService/GetSandUsageStatus` to read
+weekly usage. It never renews the token or writes to Grok Bot's files; when the
+token has expired, open Grok Bot so it renews its own sign-in. The Grok Bot
+service processes these requests under its own policies.
 Ring visibility choices are saved locally in UserDefaults.
 The reset-notification preference and last successful reading for each provider
 are also saved locally in UserDefaults. Claude account/organization identifiers
@@ -44,7 +54,7 @@ When you choose Check for Updates…, Sparkle requests the signed update feed an
 if you choose to install, the update archive from GitHub's release asset service.
 Requests may follow GitHub's redirects to its asset CDN. GitHub receives normal
 network request information such as your IP address and Uso's version/User-Agent.
-Codex and Claude credentials are never sent with update requests. Background
+Codex, Claude, and Grok Bot credentials are never sent with update requests. Background
 update checks, unattended installation, and Sparkle system profiling are disabled.
 Sparkle stores downloaded update data temporarily and verifies the signed feed,
 archive signature, and application signature before installation.

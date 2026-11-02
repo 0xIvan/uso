@@ -2,20 +2,38 @@ import AppKit
 import ServiceManagement
 
 enum UsageRing: String, CaseIterable {
-    case codex, claude
+    case codex, claude, grok
 
-    var title: String { self == .codex ? "Codex" : "Claude" }
-
-    var loginCommand: String { self == .codex ? "codex login" : "claude auth login" }
-
-    var icon: NSImage? {
-        let name = self == .codex ? "CodexLogo" : "ClaudeLogo"
-        let fileExtension = self == .codex ? "png" : "svg"
-        return Bundle.main.url(forResource: name, withExtension: fileExtension).flatMap(NSImage.init(contentsOf:))
+    var title: String {
+        switch self {
+        case .codex: return "Codex"
+        case .claude: return "Claude"
+        case .grok: return "Grok Bot"
+        }
     }
 
-    func limits(codex: UsagePresentation, claude: UsagePresentation) -> BaseLimits {
-        (self == .codex ? codex : claude).snapshot?.baseLimits ?? BaseLimits()
+    var appName: String { self == .claude ? "Claude Code" : title }
+
+    var loginCommand: String? {
+        switch self {
+        case .codex: return "codex login"
+        case .claude: return "claude auth login"
+        case .grok: return nil
+        }
+    }
+
+    var icon: NSImage? {
+        let resource: (name: String, extension: String)
+        switch self {
+        case .codex: resource = ("CodexLogo", "png")
+        case .claude: resource = ("ClaudeLogo", "svg")
+        case .grok: resource = ("GrokBotLogo", "png")
+        }
+        return Bundle.main.url(forResource: resource.name, withExtension: resource.extension).flatMap(NSImage.init(contentsOf:))
+    }
+
+    func limits(in presentations: [UsageRing: UsagePresentation]) -> BaseLimits {
+        presentations[self]?.snapshot?.baseLimits ?? BaseLimits()
     }
 
     func hasUnstartedWindow(_ bucket: LimitBucket) -> Bool {
@@ -35,24 +53,37 @@ final class RingSettings {
     }
 
     var enabled: [UsageRing] {
-        guard let values = defaults.stringArray(forKey: key) else {
-            guard let legacy = defaults.stringArray(forKey: "enabledUsageRings") else { return UsageRing.allCases }
-            let migrated = UsageRing.allCases.filter { provider in legacy.contains { $0.hasPrefix(provider.rawValue) } }
-            defaults.set(migrated.map(\.rawValue), forKey: key)
-            return migrated
+        var values: [String]
+        if let stored = defaults.stringArray(forKey: key) {
+            values = stored
+        } else if let legacy = defaults.stringArray(forKey: "enabledUsageRings") {
+            values = UsageRing.allCases.map(\.rawValue).filter { provider in legacy.contains { $0.hasPrefix(provider) } }
+        } else {
+            return UsageRing.allCases
         }
-        return UsageRing.allCases.filter { values.contains($0.rawValue) }
+        // Selections saved before a provider existed did not opt out of it.
+        let known = defaults.stringArray(forKey: knownKey) ?? [UsageRing.codex, .claude].map(\.rawValue)
+        let added = UsageRing.allCases.map(\.rawValue).filter { !known.contains($0) }
+        if defaults.stringArray(forKey: key) == nil || !added.isEmpty { save(values + added) }
+        return UsageRing.allCases.filter { (values + added).contains($0.rawValue) }
+    }
+
+    private let knownKey = "knownUsageProviders"
+
+    private func save(_ values: [String]) {
+        defaults.set(values, forKey: key)
+        defaults.set(UsageRing.allCases.map(\.rawValue), forKey: knownKey)
     }
 
     func set(_ ring: UsageRing, enabled: Bool) {
         var selection = self.enabled
         selection.removeAll { $0 == ring }
         if enabled { selection.append(ring) }
-        defaults.set(selection.map(\.rawValue), forKey: key)
+        save(selection.map(\.rawValue))
     }
 
-    func visible(codex: UsagePresentation, claude: UsagePresentation) -> [UsageRing] {
-        enabled.filter { ($0 == .codex ? codex : claude).hasSignIn }
+    func visible(_ presentations: [UsageRing: UsagePresentation]) -> [UsageRing] {
+        enabled.filter { presentations[$0]?.hasSignIn == true }
     }
 }
 
@@ -145,7 +176,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         notificationsButton.action = #selector(toggleNotifications(_:))
         notificationsButton.state = settings.resetNotificationsEnabled ? .on : .off
         notificationsButton.setAccessibilityLabel("Notify about usage resets")
-        notificationsButton.setAccessibilityHelp("Notify when Codex or Claude has more usage available, or when new Codex reset credits arrive.")
+        notificationsButton.setAccessibilityHelp("Notify when a provider has more usage available, or when new Codex reset credits arrive.")
         updateButton.target = self
         updateButton.action = #selector(checkForUpdatesPressed)
         updateButton.bezelStyle = .rounded

@@ -29,18 +29,22 @@ enum UsoMain {
     }
 
     private static func renderPreview(path: URL, codexHome: URL) -> Bool {
-        let result = UsageClient(codexHome: codexHome).load()
-        let claude = ClaudeUsageClient().load()
-        let codexPresentation = UsageSnapshotPolicy.resolve(result: result)
-        let claudePresentation = UsageSnapshotPolicy.resolve(result: claude)
-        let rings = RingSettings().visible(codex: codexPresentation, claude: claudePresentation)
-        let limits = rings.map { $0.limits(codex: codexPresentation, claude: claudePresentation) }
+        let results: [UsageRing: UsageLoadResult] = [
+            .codex: UsageClient(codexHome: codexHome).load(),
+            .claude: ClaudeUsageClient().load(),
+            .grok: GrokUsageClient().load(),
+        ]
+        let presentations = results.mapValues(UsageSnapshotPolicy.resolve(result:))
+        let rings = RingSettings().visible(presentations)
+        let limits = rings.map { $0.limits(in: presentations) }
         do {
             let dimensions = try RingRenderer.writePreview(limits: limits, icons: rings.map(\.icon), to: path)
             print("Preview: \(path.path)")
             print("Dimensions: \(Int(dimensions.width))x\(Int(dimensions.height)) px (@2x)")
-            print("Codex: \(result.snapshot?.source.rawValue ?? result.issue?.title ?? "Unavailable")")
-            print("Claude: \(claude.snapshot?.source.rawValue ?? claude.issue?.title ?? "Unavailable")")
+            for provider in UsageRing.allCases {
+                let result = results[provider]
+                print("\(provider.title): \(result?.snapshot?.source.rawValue ?? result?.issue?.title(for: provider) ?? "Unavailable")")
+            }
             return true
         } catch {
             fputs("Uso: could not write preview PNG.\n", stderr)
