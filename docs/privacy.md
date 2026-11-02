@@ -16,7 +16,7 @@ requests use an ephemeral session without a persistent response cache.
 No credentials or Codex history are bundled in the distributed app.
 
 OpenAI processes the authenticated usage request under its own policies.
-Uso is independent software, not affiliated with or endorsed by OpenAI.
+Uso is independent software, not affiliated with or endorsed by OpenAI, Anthropic, xAI, or Anysphere (Cursor).
 
 For Claude, Uso reads the existing Claude Code OAuth access token
 from the `Claude Code-credentials` macOS Keychain entry, or from
