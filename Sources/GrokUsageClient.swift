@@ -6,8 +6,13 @@ final class GrokUsageClient {
     private let session = URLSession(configuration: .ephemeral)
     private let secretsFile: URL
     private let transport: ((URLRequest) -> (status: Int?, data: Data?))?
+
+    private enum SafeStorageKey {
+        case unknown, cached(Data), declined
+    }
+
     private let keyLock = NSLock()
-    private var cachedKey: Data?
+    private var safeStorage = SafeStorageKey.unknown
 
     init(directory: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Grok Bot"),
@@ -16,7 +21,7 @@ final class GrokUsageClient {
         self.transport = transport
     }
 
-    func load() -> UsageLoadResult {
+    func load(retryingDeclinedKeychain: Bool = false) -> UsageLoadResult {
         do {
             guard let data = try? Data(contentsOf: secretsFile) else {
                 return UsageLoadResult(snapshot: nil, issue: .notSignedIn)
@@ -24,7 +29,7 @@ final class GrokUsageClient {
             guard let stored = Self.storedAccessToken(from: data) else {
                 return UsageLoadResult(snapshot: nil, issue: .notSignedIn)
             }
-            let token = try stored.encrypted ? decrypt(stored.value) : stored.value
+            let token = try stored.encrypted ? decrypt(stored.value, retryingDeclinedKeychain: retryingDeclinedKeychain) : stored.value
             if let expiry = Self.expiry(of: token), expiry <= Date() { throw UsageIssue.signInExpired }
             let response = send(Self.request(token: token))
             guard let status = response.status else { throw UsageIssue.unavailable }
@@ -70,29 +75,39 @@ final class GrokUsageClient {
     }
 
     // Electron safeStorage on macOS: "v10" + AES-128-CBC, key derived from the app's Keychain password.
-    private func decrypt(_ base64: String) throws -> String {
+    private func decrypt(_ base64: String, retryingDeclinedKeychain: Bool) throws -> String {
         guard let sealed = Data(base64Encoded: base64), sealed.starts(with: Data("v10".utf8)) else {
             throw UsageIssue.unavailable
         }
-        let key = try safeStorageKey()
+        let key = try safeStorageKey(retryingDeclined: retryingDeclinedKeychain)
         guard let plain = Self.aes128CBCDecrypt(sealed.dropFirst(3), key: key),
               let token = String(data: plain, encoding: .utf8), !token.isEmpty else {
-            keyLock.withLock { cachedKey = nil }
+            keyLock.withLock { safeStorage = .unknown }
             throw UsageIssue.unavailable
         }
         return token
     }
 
-    private func safeStorageKey() throws -> Data {
+    private func safeStorageKey(retryingDeclined: Bool) throws -> Data {
         keyLock.lock()
         defer { keyLock.unlock() }
-        if let cachedKey { return cachedKey }
+        switch safeStorage {
+        case .cached(let key): return key
+        // A denied or unanswered Keychain prompt is shown again only when the user clicks Refresh.
+        case .declined where !retryingDeclined: throw UsageIssue.unavailable
+        case .declined, .unknown: break
+        }
         // Leaves time to answer the Keychain access prompt the first read shows.
         let result = SecurityCommand.run(["find-generic-password", "-s", "Grok Bot Safe Storage", "-w"], timeout: 60)
-        guard result.status == 0 else { throw result.status == 44 ? UsageIssue.notSignedIn : UsageIssue.unavailable }
+        guard result.status == 0 else {
+            let missing = result.status == 44
+            safeStorage = missing ? .unknown : .declined
+            throw missing ? UsageIssue.notSignedIn : UsageIssue.unavailable
+        }
+        safeStorage = .unknown
         let password = String(decoding: result.data, as: UTF8.self).trimmingCharacters(in: .newlines)
         guard !password.isEmpty, let key = Self.pbkdf2(password: password) else { throw UsageIssue.unavailable }
-        cachedKey = key
+        safeStorage = .cached(key)
         return key
     }
 

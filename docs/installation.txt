@@ -2,15 +2,17 @@ Uso
 
 A menu bar utility for viewing remaining Codex, Claude, Grok Bot, and Cursor
 subscription usage.
-Independent software; not affiliated with or endorsed by OpenAI.
+Independent software; not affiliated with or endorsed by OpenAI, Anthropic,
+xAI, or Anysphere (Cursor).
 
 REQUIREMENTS
 macOS 13 or newer, on Apple Silicon or Intel.
 A local Codex sign-in with a ChatGPT account and readable credentials in
 ~/.codex/auth.json. API-key-only sign-in and Keychain-only credentials are
 not supported for Codex. Claude requires a Claude Code subscription sign-in.
-Grok Bot requires the Grok Bot desktop app to be signed in; macOS asks once
-to allow Keychain access to "Grok Bot Safe Storage".
+Grok Bot requires the Grok Bot desktop app to be signed in. macOS asks for
+Keychain access to "Grok Bot Safe Storage"; choose Always Allow so it does
+not ask again on each launch. If you deny it, click Refresh to be asked again.
 Cursor requires the Cursor app to be signed in.
 Uso reads Codex, Claude, Grok Bot, and Cursor credentials without modifying
 them. Claude Code, Grok Bot, and Cursor renew their own sign-ins.
@@ -24,7 +26,7 @@ INSTALL
 
 Open Settings from the menu to choose providers. Each provider has one
 icon: weekly on the outer ring, 5-hour on the inner. Enabled providers appear
-side by side. Green means on pace,
+side by side. Providers turned off in Settings are not read at all. Green means on pace,
 yellow warns within 5 percentage points over pace, and red means more than
 5 points over pace or exhausted. Gray indicates unavailable usage or pace.
 All providers refresh every five minutes. Failed requests clear

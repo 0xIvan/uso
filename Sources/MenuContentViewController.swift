@@ -6,6 +6,7 @@ final class MenuContentViewController: NSViewController {
     var onQuit: (() -> Void)?
 
     private var presentations = Dictionary(uniqueKeysWithValues: UsageRing.allCases.map { ($0, UsagePresentation.loading) })
+    private var enabled = UsageRing.allCases
     private let contentWidth: CGFloat = 288
     private let cardInset: CGFloat = 12
 
@@ -14,8 +15,9 @@ final class MenuContentViewController: NSViewController {
         rebuild()
     }
 
-    func update(_ presentations: [UsageRing: UsagePresentation]) {
+    func update(_ presentations: [UsageRing: UsagePresentation], enabled: [UsageRing]) {
         self.presentations = presentations
+        self.enabled = enabled
         guard isViewLoaded else {
             return
         }
@@ -64,11 +66,12 @@ final class MenuContentViewController: NSViewController {
         }
 
         if signedInPresentations.isEmpty {
-            if isRefreshing {
+            if enabled.isEmpty {
+                content.addArrangedSubview(messageLabel("All providers are off. Turn one on in Settings."))
+            } else if isRefreshing {
                 content.addArrangedSubview(messageLabel("Checking signed-in providers…"))
             } else {
-                let rows = UsageRing.allCases.enumerated().map { signInRow($0.element, index: $0.offset) }
-                content.addArrangedSubview(card(containing: rows))
+                content.addArrangedSubview(card(containing: enabled.map(signInRow)))
             }
         }
 
@@ -378,9 +381,9 @@ final class MenuContentViewController: NSViewController {
         return row
     }
 
-    private func signInRow(_ provider: UsageRing, index: Int) -> NSView {
+    private func signInRow(_ provider: UsageRing) -> NSView {
         let copy = provider.loginCommand.map { _ in actionButton(title: "Copy command", symbol: nil, action: #selector(copyLoginCommand(_:))) }
-        copy?.tag = index
+        copy?.tag = UsageRing.allCases.firstIndex(of: provider) ?? 0
         copy?.setAccessibilityLabel("Copy \(provider.title) login command")
         copy?.setContentHuggingPriority(.required, for: .horizontal)
         copy?.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -474,7 +477,7 @@ final class MenuContentViewController: NSViewController {
         if headerSnapshot != nil {
             text = "Cached"
             color = .systemOrange
-        } else if isRefreshing {
+        } else if isRefreshing || enabled.isEmpty {
             return nil
         } else if !providers.contains(where: \.hasSignIn) {
             text = "No sign-in"

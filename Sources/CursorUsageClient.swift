@@ -16,7 +16,7 @@ final class CursorUsageClient {
 
     func load() -> UsageLoadResult {
         do {
-            guard let token = storedAccessToken() else {
+            guard let token = try storedAccessToken() else {
                 return UsageLoadResult(snapshot: nil, issue: .notSignedIn)
             }
             if let expiry = GrokUsageClient.expiry(of: token), expiry <= Date() { throw UsageIssue.signInExpired }
@@ -33,20 +33,25 @@ final class CursorUsageClient {
         }
     }
 
-    private func storedAccessToken() -> String? {
+    private func storedAccessToken() throws -> String? {
         guard FileManager.default.fileExists(atPath: stateDatabase.path) else { return nil }
         var database: OpaquePointer?
         defer { sqlite3_close(database) }
         let uri = "file:\(stateDatabase.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "")?mode=ro"
-        guard sqlite3_open_v2(uri, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else { return nil }
+        guard sqlite3_open_v2(uri, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else { throw UsageIssue.unavailable }
         sqlite3_busy_timeout(database, 2_000)
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(database, "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'", -1, &statement, nil) == SQLITE_OK,
-              sqlite3_step(statement) == SQLITE_ROW,
-              let text = sqlite3_column_text(statement, 0) else { return nil }
-        let token = String(cString: text)
-        return token.isEmpty ? nil : token
+        guard sqlite3_prepare_v2(database, "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'", -1, &statement, nil) == SQLITE_OK else {
+            throw UsageIssue.unavailable
+        }
+        switch sqlite3_step(statement) {
+        case SQLITE_ROW:
+            let token = sqlite3_column_text(statement, 0).map { String(cString: $0) } ?? ""
+            return token.isEmpty ? nil : token
+        case SQLITE_DONE: return nil
+        default: throw UsageIssue.unavailable
+        }
     }
 
     static func request(token: String) -> URLRequest {
@@ -88,14 +93,17 @@ final class CursorUsageClient {
     static func decode(_ data: Data) -> UsageSnapshot? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         // Connect encodes int64 fields as JSON strings.
+        func number(_ value: Any?) -> Double? {
+            (value as? String).flatMap(Double.init) ?? value as? Double
+        }
         func milliseconds(_ key: String) -> Double? {
-            let value = (object[key] as? String).flatMap(Double.init) ?? object[key] as? Double
-            return value.flatMap { $0 > 0 ? $0 : nil }
+            number(object[key]).flatMap { $0 > 0 ? $0 : nil }
         }
         var cycle: LimitBucket?
         if let plan = object["planUsage"] as? [String: Any] {
-            let limit = plan["limit"] as? Double ?? 0
-            let used = limit > 0 ? (plan["includedSpend"] as? Double ?? 0) / limit * 100 : plan["totalPercentUsed"] as? Double
+            let limit = number(plan["limit"]) ?? 0
+            let used = number(plan["includedSpend"]).flatMap { limit > 0 ? $0 / limit * 100 : nil }
+                ?? number(plan["totalPercentUsed"])
             if let used, used.isFinite {
                 let start = milliseconds("billingCycleStart")
                 let end = milliseconds("billingCycleEnd")

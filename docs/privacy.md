@@ -33,8 +33,9 @@ these requests under its own policies.
 For Grok Bot, Uso reads the access token the Grok Bot desktop app saved in
 `~/Library/Application Support/Grok Bot/sand-secrets.json`. That token is
 encrypted with Grok Bot's `Grok Bot Safe Storage` Keychain password, which Uso
-reads (macOS asks for permission the first time) and keeps only in memory to
-decrypt the token. It sends the token to
+reads (macOS asks for permission; choose Always Allow so it does not ask on
+each launch) and keeps only in memory to decrypt the token. If you deny the
+prompt or leave it unanswered, Uso does not ask again until you click Refresh. It sends the token to
 `https://api2.cursor.sh/aiserver.v1.DashboardService/GetSandUsageStatus` to read
 weekly usage. It never renews the token or writes to Grok Bot's files; when the
 token has expired, open Grok Bot so it renews its own sign-in. The Grok Bot
@@ -48,11 +49,15 @@ that database read-only. It sends the token to
 read plan usage for the current billing cycle. It never renews the token or
 writes to Cursor's files; when the token has expired, open Cursor so it renews
 its own sign-in. Cursor processes these requests under its own policies.
+Providers turned off in Settings are not read: Uso does not open their
+credentials, ask for Keychain access, or send requests for them.
 Ring visibility choices are saved locally in UserDefaults.
 The reset-notification preference and last successful reading for each provider
 are also saved locally in UserDefaults. Claude account/organization identifiers
 are read from `~/.claude.json` to keep its baseline stable across token renewals;
 when unavailable, a hash of the current access token scopes the baseline instead.
+Grok Bot and Cursor baselines are scoped by a hash of the account ID or the
+access token's `sub` claim, falling back to a hash of the token itself.
 The reading contains a hashed account identifier, plan, remaining allowance,
 Codex reset-credit IDs/count, and observation time, solely to detect changes
 without repeating alerts across launches. It is not used to display cached

@@ -22,9 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appearanceObservation: NSKeyValueObservation?
     private let updaterController = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
     private var updaterObservation: NSKeyValueObservation?
-    private var presentations = Dictionary(uniqueKeysWithValues: UsageRing.allCases.map {
-        ($0, UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false))
-    })
+    private var presentations = Dictionary(uniqueKeysWithValues: UsageRing.allCases.map { ($0, UsagePresentation.notLoaded) })
 
     init(codexHome: URL, showsSettings: Bool = false) {
         self.showsSettings = showsSettings
@@ -54,11 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterController.startUpdater()
         if showsSettings { settingsController.present() }
         wakeObservation = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.refresh(force: true)
+            self?.refresh(.wake)
         }
-        refresh()
+        refresh(.scheduled)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            self?.refresh()
+            self?.refresh(.scheduled)
         }
     }
 
@@ -101,14 +99,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
 
         menuController.onRefresh = { [weak self] in
-            self?.refresh(force: true)
+            self?.refresh(.menu)
         }
         menuController.onSettings = { [weak self] in
             guard let self else { return }
             self.menu.cancelTracking()
             self.settingsController.present()
         }
-        settingsController.onChange = { [weak self] in self?.updateInterface() }
+        settingsController.onChange = { [weak self] in self?.settingsDidChange() }
         settingsController.onCheckForUpdates = { [weak self] in
             guard let self, self.updaterController.updater.canCheckForUpdates else { return }
             self.updaterController.checkForUpdates(nil)
@@ -116,19 +114,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuController.onQuit = {
             NSApp.terminate(nil)
         }
-        menuController.update(presentations)
+        menuController.update(presentations, enabled: settings.enabled)
     }
 
-    private func refresh(force: Bool = false) {
-        guard !presentations.values.contains(where: \.isRefreshing) else {
-            return
+    private func settingsDidChange() {
+        let enabled = settings.enabled
+        for provider in UsageRing.allCases where !enabled.contains(provider) {
+            presentations[provider] = .notLoaded
         }
-        // Codex reloads on every refresh; the others are throttled so a rate limit is not retried early.
-        let due = UsageRing.allCases.filter { provider in
-            provider == .codex
-                || Date().timeIntervalSince(lastRefresh[provider] ?? .distantPast) >= 300
-                || (force && presentations[provider]?.issue != .rateLimited)
-        }
+        refresh(.settingsChanged)
+    }
+
+    private func refresh(_ trigger: RefreshTrigger) {
+        let due = trigger.due(enabled: settings.enabled, presentations: presentations, lastRefresh: lastRefresh, now: Date())
         for provider in due {
             presentations[provider]?.isRefreshing = true
             lastRefresh[provider] = Date()
@@ -138,9 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         workerQueue.async { [weak self] in
             for provider in due {
                 guard let self else { return }
-                let result = self.load(provider)
+                guard self.settings.enabled.contains(provider) else { continue }
+                let result = self.load(provider, trigger: trigger)
                 DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.settings.enabled.contains(provider) else { return }
                     self.presentations[provider] = UsageSnapshotPolicy.resolve(result: result)
                     self.updateInterface()
                 }
@@ -148,11 +147,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func load(_ provider: UsageRing) -> UsageLoadResult {
+    private func load(_ provider: UsageRing, trigger: RefreshTrigger) -> UsageLoadResult {
         switch provider {
         case .codex: return client.load()
         case .claude: return claudeClient.load()
-        case .grok: return grokClient.load()
+        case .grok: return grokClient.load(retryingDeclinedKeychain: trigger.retriesDeclinedKeychain)
         case .cursor: return cursorClient.load()
         }
     }
@@ -166,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = image
         statusItem.button?.toolTip = tooltipText()
         statusItem.button?.setAccessibilityLabel("Uso usage")
-        menuController.update(presentations)
+        menuController.update(presentations, enabled: settings.enabled)
     }
 
     private func tooltipText() -> String {

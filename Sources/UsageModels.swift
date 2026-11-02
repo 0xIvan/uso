@@ -146,6 +146,9 @@ struct UsagePresentation {
     var isRefreshing: Bool
 
     static let loading = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: true)
+    static let notLoaded = UsagePresentation(snapshot: nil, issue: nil, isRefreshing: false)
+
+    var isNotLoaded: Bool { snapshot == nil && issue == nil && !isRefreshing }
 
     var hasSignIn: Bool {
         // A retained cache must not keep a signed-out provider visible.
@@ -160,6 +163,28 @@ enum UsageSnapshotPolicy {
             return UsagePresentation(snapshot: nil, issue: result.issue ?? .unavailable, isRefreshing: false)
         }
         return UsagePresentation(snapshot: snapshot, issue: nil, isRefreshing: false)
+    }
+}
+
+enum RefreshTrigger {
+    case scheduled, wake, menu, settingsChanged
+
+    var retriesDeclinedKeychain: Bool { self == .menu }
+
+    // Codex reloads on every refresh; the others are throttled so a rate limit is not retried early.
+    func due(enabled: [UsageRing], presentations: [UsageRing: UsagePresentation],
+             lastRefresh: [UsageRing: Date], now: Date) -> [UsageRing] {
+        enabled.filter { provider in
+            guard let presentation = presentations[provider], !presentation.isRefreshing else { return false }
+            if presentation.isNotLoaded { return true }
+            switch self {
+            case .settingsChanged: return false
+            case .scheduled, .wake, .menu:
+                return provider == .codex
+                    || now.timeIntervalSince(lastRefresh[provider] ?? .distantPast) >= 300
+                    || (self != .scheduled && presentation.issue != .rateLimited)
+            }
+        }
     }
 }
 

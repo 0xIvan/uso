@@ -13,6 +13,7 @@ enum SelfCheck {
             ("Grok Bot weekly window, stored token formats and malformed data", checkGrokDecoding),
             ("Cursor monthly window, percent fallback and malformed data", checkCursorDecoding),
             ("ring selection persists and allows all rings off", checkRingSelection),
+            ("refreshes load only turned-on providers and respect the throttle", checkRefreshSchedule),
             ("side-by-side ring dimensions and unavailable fallback", checkRingLayout),
             ("usage and reset requests select the signed-in account", checkAccountSelection),
             ("legacy credentials and invalid sign-ins", checkLegacyCredentials),
@@ -81,15 +82,15 @@ enum SelfCheck {
         func labels(in view: NSView) -> [String] {
             (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap { labels(in: $0) }
         }
-        controller.update([.codex: absent, .claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false), .grok: absent])
+        controller.update([.codex: absent, .claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false), .grok: absent], enabled: UsageRing.allCases)
         let idleLabels = labels(in: controller.view)
         guard idleLabels.contains("Window not started"), !idleLabels.contains("Reset time unavailable"),
               !idleLabels.contains("CODEX"), idleLabels.contains("CLAUDE"),
               !idleLabels.contains("Live"), !idleLabels.contains("Unavailable") else { return false }
         idle.baseLimits.fiveHour?.usedPercent = 10
-        controller.update([.codex: absent, .claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false), .grok: absent])
+        controller.update([.codex: absent, .claude: UsagePresentation(snapshot: idle, issue: nil, isRefreshing: false), .grok: absent], enabled: UsageRing.allCases)
         guard labels(in: controller.view).contains("Reset time unavailable") else { return false }
-        controller.update([.codex: absent, .claude: absent, .grok: absent])
+        controller.update([.codex: absent, .claude: absent, .grok: absent], enabled: UsageRing.allCases)
         let absentLabels = labels(in: controller.view)
         return absentLabels.contains("Codex: run codex login")
             && absentLabels.contains("Claude: run claude auth login")
@@ -201,6 +202,8 @@ enum SelfCheck {
         let usage = #"{"billingCycleStart":"1793750400000","billingCycleEnd":"1796428800000","planUsage":{"includedSpend":1500,"limit":2000,"totalPercentUsed":90}}"#
         let monthly = CursorUsageClient.decode(Data(usage.utf8))?.baseLimits.weekly
         let percentOnly = CursorUsageClient.decode(Data(#"{"planUsage":{"totalPercentUsed":40}}"#.utf8))?.baseLimits.weekly
+        let spendMissing = CursorUsageClient.decode(Data(#"{"planUsage":{"limit":2000,"totalPercentUsed":40}}"#.utf8))?.baseLimits.weekly
+        let spendText = CursorUsageClient.decode(Data(#"{"planUsage":{"limit":"2000","includedSpend":"500"}}"#.utf8))?.baseLimits.weekly
         let weekly = LimitBucket(usedPercent: 0, windowMinutes: 10_080, resetAt: nil)
         return monthly?.remainingPercent == 25
             && monthly?.windowMinutes == 44_640
@@ -209,6 +212,8 @@ enum SelfCheck {
             && BaseLimitRole.weekly.title(for: weekly) == "Weekly"
             && percentOnly?.remainingPercent == 60
             && percentOnly?.windowMinutes == nil
+            && spendMissing?.remainingPercent == 60
+            && spendText?.remainingPercent == 75
             && CursorUsageClient.decode(Data("{}".utf8))?.hasAnyData == false
             && CursorUsageClient.decode(Data("[]".utf8)) == nil
     }
@@ -233,6 +238,24 @@ enum SelfCheck {
         defaults.removeObject(forKey: "knownUsageProviders")
         defaults.set(["claude"], forKey: "enabledUsageProviders")
         return settings.enabled == [.claude, .grok, .cursor] && RingSettings(defaults: defaults).enabled == [.claude, .grok, .cursor]
+    }
+
+    private static func checkRefreshSchedule() -> Bool {
+        let now = Date()
+        let failed = UsagePresentation(snapshot: nil, issue: .unavailable, isRefreshing: false)
+        let limited = UsagePresentation(snapshot: nil, issue: .rateLimited, isRefreshing: false)
+        let presentations: [UsageRing: UsagePresentation] = [.codex: failed, .claude: limited, .grok: failed, .cursor: .notLoaded]
+        let recent = Dictionary(uniqueKeysWithValues: UsageRing.allCases.map { ($0, now) })
+        func due(_ trigger: RefreshTrigger, _ enabled: [UsageRing], lastRefresh: [UsageRing: Date] = recent) -> [UsageRing] {
+            trigger.due(enabled: enabled, presentations: presentations, lastRefresh: lastRefresh, now: now)
+        }
+        return due(.scheduled, [.codex, .claude, .cursor]) == [.codex, .cursor]
+            && due(.scheduled, [.claude, .grok], lastRefresh: [:]) == [.claude, .grok]
+            && due(.menu, [.claude, .grok]) == [.grok]
+            && due(.settingsChanged, UsageRing.allCases) == [.cursor]
+            && due(.wake, []).isEmpty
+            && RefreshTrigger.menu.retriesDeclinedKeychain
+            && !RefreshTrigger.wake.retriesDeclinedKeychain && !RefreshTrigger.scheduled.retriesDeclinedKeychain
     }
 
     private static func checkRingLayout() -> Bool {
@@ -478,7 +501,7 @@ enum SelfCheck {
             (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap { labels(in: $0) }
         }
         let live = UsageSnapshotPolicy.resolve(result: UsageLoadResult(snapshot: snapshot(source: .live, usedPercent: 20), issue: nil))
-        controller.update([.codex: live, .claude: live, .grok: live])
+        controller.update([.codex: live, .claude: live, .grok: live], enabled: UsageRing.allCases)
         let failures: [UsageLoadResult] = [
             UsageLoadResult(snapshot: nil, issue: .unavailable),
             UsageLoadResult(snapshot: nil, issue: .signInExpired),
@@ -488,7 +511,7 @@ enum SelfCheck {
         for failure in failures {
             let presentation = UsageSnapshotPolicy.resolve(result: failure)
             guard presentation.snapshot == nil, presentation.hasSignIn, !presentation.isRefreshing else { return false }
-            controller.update([.codex: presentation, .claude: presentation, .grok: presentation])
+            controller.update([.codex: presentation, .claude: presentation, .grok: presentation], enabled: UsageRing.allCases)
             let text = labels(in: controller.view)
             let needsLogin = failure.issue == .signInExpired
             guard text.filter({ $0 == "Log in again" }).count == (needsLogin ? 3 : 1),
